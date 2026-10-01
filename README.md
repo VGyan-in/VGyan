@@ -119,121 +119,108 @@ Prompt → Type | Camera | Gallery
 ## 4. Project Structure
 
 ```
-assessment-app/
-├── android/                         # Native project: permissions, Vosk native libs, signing config
-├── ios/                             # Not targeted in v1
-├── models/                          # Vosk models (git-ignored; see "ASR models")
-│   ├── en/
-│   └── kn/
-├── scripts/
-│   └── copy-vosk-models.sh          # Copies models into the location react-native-vosk expects
-├── src/
-│   ├── App.tsx                      # Providers: i18n, navigation, DB init, sync bootstrap
-│   │
-│   ├── navigation/
-│   │   ├── RootNavigator.tsx        # Splash → consent gate → auth / main
-│   │   ├── AuthStack.tsx            # Login, Register
-│   │   ├── MainTabs.tsx             # Home, Progress, Profile
-│   │   ├── ReadingStack.tsx         # Reading flow screens
-│   │   ├── WritingStack.tsx         # Writing flow screens
-│   │   └── types.ts                 # Typed route params
-│   │
-│   ├── features/
-│   │   ├── auth/
-│   │   │   ├── screens/             # SplashScreen, LoginScreen, RegisterScreen
-│   │   │   ├── services/authService.ts
-│   │   │   ├── store/authStore.ts
-│   │   │   └── schemas.ts           # zod: registration fields
-│   │   │
-│   │   ├── consent/
-│   │   │   ├── screens/ConsentScreen.tsx
-│   │   │   ├── consentText.ts       # Versioned consent copy (en, kn)
-│   │   │   └── consentService.ts    # Record, check, and sync consent
-│   │   │
-│   │   ├── home/
-│   │   │   └── screens/HomeScreen.tsx
-│   │   │
-│   │   ├── reading/
-│   │   │   ├── screens/             # LanguageSelect, LevelSelect, Passage, Recording,
-│   │   │   │                        # Processing, ReadingResult
-│   │   │   ├── components/          # PassageView, RecorderControls, WordDiffView, MetricCard
-│   │   │   ├── hooks/               # useRecorder, useReadingSession
-│   │   │   ├── services/
-│   │   │   │   ├── audioRecorder.ts     # 16 kHz mono WAV capture + file path handling
-│   │   │   │   ├── asrService.ts        # Vosk wrapper: load model, transcribe, timestamps
-│   │   │   │   ├── readingAnalyzer.ts   # Word alignment (pure TS)
-│   │   │   │   ├── readingMetrics.ts    # accuracy, WPM, pace (pure TS)
-│   │   │   │   ├── practiceWords.ts     # Practice word selection
-│   │   │   │   └── readingPipeline.ts   # Orchestrates the whole reading flow
-│   │   │   └── types.ts
-│   │   │
-│   │   ├── writing/
-│   │   │   ├── screens/             # WritingPrompt, InputChoice, TypeWriting, ImagePreview,
-│   │   │   │                        # OcrCorrection, WritingResult
-│   │   │   ├── components/          # OcrEditor, ImagePreviewCard, FeedbackSection
-│   │   │   ├── hooks/               # useWritingSession
-│   │   │   ├── services/
-│   │   │   │   ├── imageService.ts      # Camera/gallery/crop; stores ORIGINAL image
-│   │   │   │   ├── ocrService.ts        # Calls backend /ocr
-│   │   │   │   ├── writingMetrics.ts    # word and sentence counts
-│   │   │   │   └── writingPipeline.ts
-│   │   │   └── types.ts
-│   │   │
-│   │   ├── progress/
-│   │   │   ├── screens/             # ReadingProgress, WritingProgress
-│   │   │   └── services/progressService.ts  # Aggregates trends from SQLite
-│   │   │
-│   │   └── profile/
-│   │       └── screens/ProfileScreen.tsx
-│   │
-│   ├── core/
-│   │   ├── api/
-│   │   │   ├── client.ts            # Axios instance + JWT interceptor
-│   │   │   ├── endpoints.ts         # All route constants
-│   │   │   └── errors.ts            # Error mapping (network / auth / validation)
-│   │   ├── ai/
-│   │   │   ├── aiClient.ts          # /ai/reading-feedback, /ai/writing-assessment
-│   │   │   ├── schemas.ts           # zod schemas for AI responses
-│   │   │   └── types.ts
-│   │   ├── db/
-│   │   │   ├── database.ts          # Open DB, run migrations
-│   │   │   ├── migrations/          # 001_init.sql, 002_...
-│   │   │   └── repositories/        # readingRepo, writingRepo, sessionRepo,
-│   │   │                            # consentRepo, assignmentRepo, syncQueueRepo
-│   │   ├── sync/
-│   │   │   ├── syncQueue.ts         # Enqueue, claim, mark states
-│   │   │   ├── syncWorker.ts        # Drain loop; triggered by NetInfo / foreground / background fetch
-│   │   │   ├── backoff.ts           # Exponential backoff with jitter
-│   │   │   └── uploaders/           # readingUploader.ts, writingUploader.ts, consentUploader.ts
-│   │   ├── storage/
-│   │   │   ├── fileStore.ts         # Recordings/images directory layout, cleanup
-│   │   │   └── secureStore.ts       # Keychain wrapper for JWT
-│   │   ├── config/
-│   │   │   ├── env.ts               # Typed access to .env
-│   │   │   └── constants.ts         # Levels, languages, thresholds
-│   │   ├── i18n/
-│   │   │   ├── index.ts
-│   │   │   └── locales/             # en.json, kn.json
-│   │   ├── theme/                   # colors, spacing, typography
-│   │   ├── hooks/                   # useNetwork, useAppState
-│   │   └── utils/                   # ids.ts (UUID), text.ts (normalisation), time.ts
-│   │
-│   ├── components/                  # Shared UI: Button, Card, Screen, LoadingOverlay, ...
-│   └── types/                       # Global and shared types
+VGyan/
+├── README.md                          # monorepo overview (links to the 3 apps)
 │
-├── __tests__/
-│   ├── reading/                     # readingAnalyzer, readingMetrics, practiceWords
-│   ├── writing/
-│   ├── sync/                        # queue, backoff, uploaders
-│   └── db/                          # migrations and repositories
-├── .env.example
-├── .eslintrc.js
-├── .gitignore
-├── babel.config.js
-├── metro.config.js
-├── package.json
-├── tsconfig.json
-└── README.md
+├── client/                            # Expo + Expo Router (student mobile app)
+│   ├── app.json                       # + package name, mic/camera permissions, plugins
+│   ├── eas.json                       # NEW (optional): EAS build profiles for APK
+│   ├── tailwind.config.js             # NativeWind (if you're using it)
+│   ├── .env.example                   # NEW: EXPO_PUBLIC_API_BASE_URL, CONSENT_VERSION
+│   ├── assets/                        # fonts (+ a Kannada font), icons, images
+│   ├── models/                        # NEW: Vosk en/ and kn/ (git-ignored)
+│   ├── scripts/                       # NEW: copy-vosk-models.sh
+│   ├── __tests__/                     # NEW: reading/ writing/ sync/ db/
+│   └── src/
+│       ├── global.css
+│       │
+│       ├── app/                       # ROUTES ONLY: each file renders a feature screen
+│       │   ├── _layout.tsx            # providers, DB init, sync bootstrap, consent gate
+│       │   ├── index.tsx              # splash → redirect
+│       │   ├── consent.tsx
+│       │   ├── (auth)/
+│       │   │   ├── _layout.tsx
+│       │   │   ├── login.tsx
+│       │   │   └── register.tsx
+│       │   ├── (tabs)/
+│       │   │   ├── _layout.tsx
+│       │   │   ├── index.tsx          # Home
+│       │   │   ├── progress.tsx
+│       │   │   └── profile.tsx
+│       │   ├── reading/
+│       │   │   ├── _layout.tsx
+│       │   │   ├── language.tsx
+│       │   │   ├── level.tsx          # Easy / Medium / Advanced
+│       │   │   ├── passage.tsx
+│       │   │   ├── recording.tsx
+│       │   │   ├── processing.tsx
+│       │   │   └── result.tsx
+│       │   ├── writing/
+│       │   │   ├── _layout.tsx
+│       │   │   ├── prompt.tsx
+│       │   │   ├── input.tsx          # type / camera / gallery
+│       │   │   ├── type.tsx
+│       │   │   ├── preview.tsx        # crop / adjust
+│       │   │   ├── ocr-correction.tsx
+│       │   │   └── result.tsx
+│       │   └── +not-found.tsx
+│       │
+│       ├── features/                  # NEW: all screen UI and logic
+│       │   ├── auth/                  # screens/, services/authService.ts, store/authStore.ts, schemas.ts
+│       │   ├── consent/               # ConsentScreen, consentText.ts (en/kn, versioned), consentService.ts
+│       │   ├── reading/
+│       │   │   ├── screens/
+│       │   │   ├── components/        # PassageView, RecorderControls, WordDiffView, MetricCard
+│       │   │   ├── hooks/             # useRecorder, useReadingSession
+│       │   │   ├── services/
+│       │   │   │   ├── audioRecorder.ts     # 16 kHz mono WAV
+│       │   │   │   ├── asrService.ts        # Vosk wrapper
+│       │   │   │   ├── readingAnalyzer.ts   # word alignment (pure TS)
+│       │   │   │   ├── readingMetrics.ts    # accuracy, WPM, pace
+│       │   │   │   ├── practiceWords.ts
+│       │   │   │   └── readingPipeline.ts
+│       │   │   └── types.ts
+│       │   ├── writing/
+│       │   │   ├── screens/  components/  hooks/
+│       │   │   ├── services/          # imageService, ocrService, writingMetrics, writingPipeline
+│       │   │   └── types.ts
+│       │   ├── progress/              # screens + progressService.ts (trends from SQLite)
+│       │   └── profile/
+│       │
+│       ├── core/                      # NEW: shared infrastructure
+│       │   ├── api/                   # client.ts (axios + JWT), endpoints.ts, errors.ts
+│       │   ├── ai/                    # aiClient.ts, schemas.ts (zod)
+│       │   ├── db/                    # database.ts, migrations/, repositories/
+│       │   ├── sync/                  # syncQueue, syncWorker, backoff, uploaders/
+│       │   ├── storage/               # fileStore.ts, secureStore.ts
+│       │   ├── config/                # env.ts
+│       │   ├── i18n/                  # index.ts, locales/en.json, kn.json
+│       │   └── utils/                 # ids.ts (UUID), text.ts (normalisation), time.ts
+│       │
+│       ├── components/                # existing: shared UI (Button, Card, Screen, ...)
+│       ├── constants/                 # existing: levels, languages, colors
+│       └── hooks/                     # existing: useNetwork, useAppState, ...
+│
+├── backend/                           # FastAPI
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── api/                       # auth, student, reading, writing, teacher, research, ai, ocr
+│   │   ├── models/                    # student, reading, writing, session, comment, consent
+│   │   ├── schemas/                   # Pydantic
+│   │   ├── services/                  # gemini.py, ocr.py, storage.py, analytics.py, export.py
+│   │   ├── core/                      # auth.py (JWT), security.py, config.py
+│   │   └── db/                        # database.py, migrations/ (Alembic)
+│   ├── tests/
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+└── teacher-dashboard/                 # React + TypeScript + Tailwind
+    └── src/
+        ├── pages/                     # Login, Dashboard, Students, StudentDetail, AssessmentDetail
+        ├── components/                # StatCard, StudentTable, charts/, CommentBox
+        ├── api/                       # axios client + endpoint functions
+        ├── hooks/
+        └── types/
 ```
 
 ## 5. Getting Started
