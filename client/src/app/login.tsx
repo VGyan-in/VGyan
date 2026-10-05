@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import {
   View,
+  Text,
   StyleSheet,
   Image,
   TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -18,95 +20,168 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/");
+    }
+  };
+
+  const handleLogin = () => {
+    router.replace("/");
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.screenWrapper}>
-        {/* Exact Visual Mockup from Design with Dummy Status Bar (charge, time, notch) Cleanly Removed */}
-        <Image
-          source={require("@/assets/images/login_exact.png")}
-          style={styles.mockupImage}
-          resizeMode="cover"
-        />
+        <SafeAreaView style={styles.safeArea}>
+          {/* Top Bar with Exactly Positioned Back Button */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleBack}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={styles.backButtonText}>←</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+          </View>
 
-        {/* Interactive Overlay Layer */}
-        <SafeAreaView style={styles.interactiveLayer}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={styles.keyboardView}
           >
-            {/* Email / Participant ID Input Overlay */}
-            <View
-              style={[
-                styles.emailInputBox,
-                identifier ? styles.filledInputBg : null,
-              ]}
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <TextInput
-                style={styles.transparentInput}
-                placeholder=""
-                value={identifier}
-                onChangeText={setIdentifier}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
+              {/* Header & VGyan Branding */}
+              <View style={styles.headerSection}>
+                <Image
+                  source={require("@/assets/images/vgyan_logo.png")}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+                <Text style={styles.title}>Welcome Back</Text>
+                <Text style={styles.subtitle}>
+                  Sign in to continue your reading practice in Kannada & English
+                </Text>
+              </View>
 
-            {/* Password Input Overlay */}
-            <View
-              style={[
-                styles.passwordInputBox,
-                password ? styles.filledInputBg : null,
-              ]}
-            >
-              <TextInput
-                style={styles.transparentInput}
-                placeholder=""
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.eyeTouchArea}
-              />
-            </View>
+              {/* Form Card */}
+              <View style={styles.formCard}>
+                {/* Identifier Field */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Email or Participant ID</Text>
+                  <View
+                    style={[
+                      styles.inputContainer,
+                      focusedInput === "identifier" && styles.inputFocused,
+                    ]}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter email or ID"
+                      placeholderTextColor="#8CA399"
+                      value={identifier}
+                      onChangeText={setIdentifier}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      onFocus={() => setFocusedInput("identifier")}
+                      onBlur={() => setFocusedInput(null)}
+                    />
+                  </View>
+                </View>
 
-            {/* Remember Me Checkbox Touch Target */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setRememberMe(!rememberMe)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={styles.rememberMeTouchArea}
-            />
+                {/* Password Field */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View
+                    style={[
+                      styles.inputContainer,
+                      focusedInput === "password" && styles.inputFocused,
+                    ]}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your password"
+                      placeholderTextColor="#8CA399"
+                      secureTextEntry={!showPassword}
+                      value={password}
+                      onChangeText={setPassword}
+                      onFocus={() => setFocusedInput("password")}
+                      onBlur={() => setFocusedInput(null)}
+                    />
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => setShowPassword(!showPassword)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={styles.eyeButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+                    >
+                      <Text style={styles.eyeIcon}>{showPassword ? "👁️" : "👁️‍🗨️"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-            {/* Forgot Password Touch Target */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                // Forgot password action
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={styles.forgotPasswordTouchArea}
-            />
+                {/* Remember Me & Forgot Password Row */}
+                <View style={styles.optionsRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setRememberMe(!rememberMe)}
+                    style={styles.rememberMeRow}
+                  >
+                    <View
+                      style={[
+                        styles.checkbox,
+                        rememberMe && styles.checkboxChecked,
+                      ]}
+                    >
+                      {rememberMe && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                    <Text style={styles.rememberText}>Remember me</Text>
+                  </TouchableOpacity>
 
-            {/* Login CTA Button Touch Target */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                // Navigate to main assessment / home
-              }}
-              style={styles.loginButtonTouchArea}
-            />
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => {}}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.forgotText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+                </View>
 
-            {/* Register Switch Link Touch Target */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => router.push("/register")}
-              hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}
-              style={styles.registerLinkTouchArea}
-            />
+                {/* Sign In CTA Button */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleLogin}
+                  style={styles.loginButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign in"
+                >
+                  <Text style={styles.loginButtonText}>Sign In →</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Switch to Register */}
+              <View style={styles.footerSection}>
+                <Text style={styles.footerText}>Don't have an account? </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => router.push("/register")}
+                >
+                  <Text style={styles.registerLink}>Sign Up</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
@@ -119,8 +194,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     height: "100%",
-    overflow: "hidden",
-    backgroundColor: Palette.softCream,
+    backgroundColor: "#FAF6EF",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -128,92 +202,230 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     maxWidth: 480,
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: Palette.softCream,
+    backgroundColor: "#FAF6EF",
   },
-  mockupImage: {
-    width: "100%",
-    height: "100%",
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  interactiveLayer: {
+  safeArea: {
     flex: 1,
+  },
+  topBar: {
+    width: "100%",
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginTop: Platform.OS === "android" ? 12 : 6,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(11, 61, 46, 0.12)",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#0B3D2E",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: "0 2px 6px rgba(11, 61, 46, 0.1)",
+        cursor: "pointer",
+      },
+    }),
+  },
+  backButtonText: {
+    fontSize: 20,
+    color: "#0B3D2E",
+    fontWeight: "700",
+    marginLeft: -1,
   },
   keyboardView: {
     flex: 1,
-    position: "relative",
   },
-  emailInputBox: {
-    position: "absolute",
-    top: "44.0%",
-    left: "19.5%",
-    right: "18.5%",
-    height: 38,
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 32,
+    alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
   },
-  passwordInputBox: {
-    position: "absolute",
-    top: "50.0%",
-    left: "19.5%",
-    right: "25.0%",
-    height: 38,
+  headerSection: {
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  logoImage: {
+    width: 95,
+    height: 70,
+    marginBottom: 10,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#0B3D2E",
+    letterSpacing: -0.3,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 14.5,
+    color: "#4B6B60",
+    textAlign: "center",
+    lineHeight: 21,
+    paddingHorizontal: 16,
+  },
+  formCard: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderWidth: 1,
+    borderColor: "#E4EDE7",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#0B3D2E",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.06,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: "0 8px 24px rgba(11, 61, 46, 0.06)",
+      },
+    }),
+  },
+  fieldGroup: {
+    marginBottom: 18,
+  },
+  label: {
+    fontSize: 13.5,
+    fontWeight: "600",
+    color: "#164A3D",
+    marginBottom: 7,
+    letterSpacing: 0.1,
+  },
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 8,
+    backgroundColor: "#F8FAF8",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#D9E6DF",
+    paddingHorizontal: 14,
+    height: 50,
   },
-  filledInputBg: {
+  inputFocused: {
+    borderColor: "#0B3D2E",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 8,
   },
-  transparentInput: {
+  input: {
     flex: 1,
-    fontSize: 14.5,
-    color: "#0F172A",
-    fontWeight: "500",
-    backgroundColor: "transparent",
+    fontSize: 15,
+    color: "#0F2F24",
     paddingVertical: 0,
-    paddingHorizontal: 2,
   },
-  eyeTouchArea: {
-    position: "absolute",
-    right: -32,
-    width: 32,
-    height: 32,
+  eyeButton: {
+    padding: 6,
+    marginLeft: 6,
   },
-  rememberMeTouchArea: {
-    position: "absolute",
-    top: "58.0%",
-    left: "15.5%",
-    width: 125,
-    height: 32,
+  eyeIcon: {
+    fontSize: 16,
+    opacity: 0.7,
   },
-  forgotPasswordTouchArea: {
-    position: "absolute",
-    top: "58.0%",
-    right: "15.5%",
-    width: 115,
-    height: 32,
+  optionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+    marginBottom: 22,
   },
-  loginButtonTouchArea: {
-    position: "absolute",
-    top: "64.0%",
-    left: "15.5%",
-    right: "15.5%",
+  rememberMeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: "#B7CDC3",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#0B3D2E",
+    borderColor: "#0B3D2E",
+  },
+  checkmark: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  rememberText: {
+    fontSize: 13.5,
+    color: "#4B6B60",
+    fontWeight: "500",
+  },
+  forgotText: {
+    fontSize: 13.5,
+    color: "#0B3D2E",
+    fontWeight: "600",
+  },
+  loginButton: {
     height: 52,
     borderRadius: 26,
+    backgroundColor: "#0B3D2E",
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#052219",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: "0 4px 12px rgba(11, 61, 46, 0.25)",
+        cursor: "pointer",
+      },
+    }),
   },
-  registerLinkTouchArea: {
-    position: "absolute",
-    top: "72.0%",
-    left: "18%",
-    right: "18%",
-    height: 36,
+  loginButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  footerSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 22,
+  },
+  footerText: {
+    fontSize: 14,
+    color: "#4B6B60",
+  },
+  registerLink: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0B3D2E",
   },
 });

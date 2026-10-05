@@ -10,6 +10,7 @@ export default function RootLayout() {
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const assets = [
         require("@/assets/images/welcome_exact.png"),
+        require("@/assets/images/leaf_icon.png"),
         require("@/assets/images/onboarding1_exact.png"),
         require("@/assets/images/onboarding2_exact.png"),
         require("@/assets/images/login_exact.png"),
