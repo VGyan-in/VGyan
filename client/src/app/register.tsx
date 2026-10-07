@@ -35,7 +35,7 @@ export default function RegisterScreen() {
   };
 
   const handleRegister = () => {
-    router.push("/login");
+    router.replace("/consent");
   };
 
   return (

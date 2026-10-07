@@ -31,7 +31,7 @@ export default function LoginScreen() {
   };
 
   const handleLogin = () => {
-    router.replace("/");
+    router.replace("/consent");
   };
 
   return (

@@ -39,6 +39,10 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding2" />
         <Stack.Screen name="login" />
         <Stack.Screen name="register" />
+        <Stack.Screen name="consent" />
+        <Stack.Screen name="home" />
+        <Stack.Screen name="progress" />
+        <Stack.Screen name="profile" />
       </Stack>
     </SafeAreaProvider>
   );
