@@ -11,8 +11,8 @@ export default function RootLayout() {
       const assets = [
         require("@/assets/images/welcome_exact.png"),
         require("@/assets/images/leaf_icon.png"),
-        require("@/assets/images/onboarding1_exact.png"),
-        require("@/assets/images/onboarding2_exact.png"),
+        // require("@/assets/images/onboarding1_exact.png"),
+        // require("@/assets/images/onboarding2_exact.png"),
         require("@/assets/images/login_exact.png"),
         require("@/assets/images/register_exact.png"),
       ];
@@ -35,8 +35,9 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding1" />
-        <Stack.Screen name="onboarding2" />
+        {/* Onboarding screens commented out */}
+        {/* <Stack.Screen name="onboarding1" /> */}
+        {/* <Stack.Screen name="onboarding2" /> */}
         <Stack.Screen name="login" />
         <Stack.Screen name="register" />
         <Stack.Screen name="consent" />

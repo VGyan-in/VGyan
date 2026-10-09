@@ -54,7 +54,8 @@ export default function WelcomeScreen() {
             {/* "Get Started →" CTA Button */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => router.push("/onboarding1")}
+              // onPress={() => router.push("/onboarding1")}
+              onPress={() => router.push("/login")}
               style={styles.getStartedButton}
               accessibilityRole="button"
               accessibilityLabel="Get Started"

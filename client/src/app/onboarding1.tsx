@@ -1,4 +1,12 @@
 import React from "react";
+import { Redirect } from "expo-router";
+
+// ==========================================
+// ONBOARDING SCREEN 1 (COMMENTED OUT AS REQUESTED)
+// Direct Flow: Welcome Screen -> Login Screen
+// ==========================================
+
+/*
 import {
   View,
   Text,
@@ -11,7 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Palette } from "@/constants/theme";
 
-export default function OnboardingScreen1() {
+export function OriginalOnboardingScreen1() {
   const router = useRouter();
 
   const handleBack = () => {
@@ -25,16 +33,13 @@ export default function OnboardingScreen1() {
   return (
     <View style={styles.container}>
       <View style={styles.screenWrapper}>
-        {/* Crystal Clear Ultra High-Res Enhanced Artwork */}
         <Image
           source={require("@/assets/images/onboarding1_exact.png")}
           style={styles.mockupImage}
           resizeMode="cover"
         />
 
-        {/* Interactive Overlay Layer */}
         <SafeAreaView style={styles.interactiveLayer}>
-          {/* Top Bar with Consistent Back Button and Skip Button */}
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -59,7 +64,6 @@ export default function OnboardingScreen1() {
             </TouchableOpacity>
           </View>
 
-          {/* Bottom Floating Action Arrow Button Touch Target */}
           <View style={styles.bottomBar}>
             <View style={{ flex: 1 }} />
             <TouchableOpacity
@@ -197,3 +201,8 @@ const styles = StyleSheet.create({
     }),
   },
 });
+*/
+
+export default function OnboardingScreen1() {
+  return <Redirect href="/login" />;
+}
