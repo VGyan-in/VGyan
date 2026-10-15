@@ -12,10 +12,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Palette } from "@/constants/theme";
+import { useApp } from "@/state/app-store";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { login, hasActiveConsent } = useApp();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,7 +32,9 @@ export default function LoginScreen() {
   };
 
   const handleLogin = () => {
-    router.replace("/consent");
+    // STUB: replace with POST /student/login (JWT to secure storage) once the backend is up.
+    login(identifier);
+    router.replace(hasActiveConsent ? "/home" : "/consent");
   };
 
   return (
@@ -173,7 +176,7 @@ export default function LoginScreen() {
 
               {/* Switch to Register */}
               <View style={styles.footerSection}>
-                <Text style={styles.footerText}>Don't have an account? </Text>
+                <Text style={styles.footerText}>Don&apos;t have an account? </Text>
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={() => router.push("/register")}

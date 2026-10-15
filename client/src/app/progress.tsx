@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,28 +9,104 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import * as Speech from "expo-speech";
 import { AppIcon } from "@/components/ui/app-icon";
-import {
-  mockWritingAttempts,
-  mockPracticeWordsList,
-} from "@/constants/mock-data";
 import { BottomNavBar } from "@/components/bottom-nav-bar";
+import { tokenize } from "@/features/reading/analyzer";
+import { useApp } from "@/state/app-store";
+import { attemptDate } from "@/utils/format";
+
+type Timeframe = "week" | "month" | "all";
+
+const TIMEFRAME_DAYS: Record<Timeframe, number | null> = { week: 7, month: 30, all: null };
+
+const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 export default function ProgressScreen() {
   const router = useRouter();
-  const [lang, setLang] = useState<"en" | "kn">("en");
+  const { lang, toggleLang, readingAttempts, writingAttempts, pendingCount } = useApp();
   const [activeTab, setActiveTab] = useState<"reading" | "writing">("reading");
-  const [timeframe, setTimeframe] = useState<"week" | "month" | "all">("week");
+  const [timeframe, setTimeframe] = useState<Timeframe>("week");
 
-  const weeklyTrend = [
-    { day: "Mon", accuracy: 88, wpm: 72 },
-    { day: "Tue", accuracy: 90, wpm: 75 },
-    { day: "Wed", accuracy: 89, wpm: 74 },
-    { day: "Thu", accuracy: 92, wpm: 78 },
-    { day: "Fri", accuracy: 91, wpm: 80 },
-    { day: "Sat", accuracy: 94, wpm: 82 },
-    { day: "Sun", accuracy: 93, wpm: 81 },
-  ];
+  const [now] = useState(() => Date.now());
+
+  // Seed attempts have no timestamp; they are treated as recent so the demo history stays visible.
+  const { reading, writing } = useMemo(() => {
+    const days = TIMEFRAME_DAYS[timeframe];
+    const inRange = (a: { createdAt?: string }) =>
+      days == null || !a.createdAt || now - new Date(a.createdAt).getTime() <= days * 86400000;
+    return {
+      reading: readingAttempts.filter(inRange),
+      writing: writingAttempts
+        .filter(inRange)
+        .filter((a) => a.aiStatus !== "pending" && a.aiStatus !== "failed"),
+    };
+  }, [readingAttempts, writingAttempts, timeframe, now]);
+
+  const avgAccuracy = avg(reading.map((a) => a.accuracy));
+  const avgWpm = avg(reading.map((a) => a.wpm));
+  const avgWriting = avg(writing.map((a) => a.score));
+  const totalSessions = reading.length + writing.length;
+
+  // Oldest → newest, last 7, for the bar chart.
+  const trend = [...reading].reverse().slice(-7);
+
+  const byLanguage = (["English", "Kannada"] as const).map((language) => {
+    const xs = reading.filter((a) => a.language === language);
+    return {
+      language,
+      count: xs.length,
+      accuracy: avg(xs.map((a) => a.accuracy)),
+      wpm: avg(xs.map((a) => a.wpm)),
+    };
+  });
+
+  // Alignment breakdown across attempts that recorded it, as a share of reference words.
+  const aligned = reading.filter((a) => a.substitutions != null && a.referenceText);
+  const refWords = aligned.reduce((sum, a) => sum + tokenize(a.referenceText!).length, 0);
+  const pct = (n: number) => (refWords ? Math.round((n / refWords) * 100) : 0);
+  const subs = aligned.reduce((s, a) => s + (a.substitutions ?? 0), 0);
+  const oms = aligned.reduce((s, a) => s + (a.omissions ?? 0), 0);
+  const ins = aligned.reduce((s, a) => s + (a.insertions ?? 0), 0);
+  const correctPct = refWords ? Math.max(0, 100 - pct(subs) - pct(oms)) : 0;
+
+  // Practice words ranked by how often they were missed.
+  const practice = useMemo(() => {
+    const map = new Map<string, { word: string; language: string; count: number }>();
+    for (const a of reading) {
+      for (const w of a.practiceWords) {
+        const key = w.toLowerCase();
+        const entry = map.get(key) ?? { word: w, language: a.language, count: 0 };
+        entry.count += 1;
+        map.set(key, entry);
+      }
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+  }, [reading]);
+
+  const avgRubric = {
+    spelling: avg(writing.map((a) => a.spellingScore)),
+    grammar: avg(writing.map((a) => a.grammarScore)),
+    vocabulary: avg(writing.map((a) => a.vocabularyScore)),
+    ocr: avg(writing.filter((a) => a.inputMethod !== "typed" && a.ocrAccuracy > 0).map((a) => a.ocrAccuracy)),
+  };
+  const latestWriting = writing[0];
+  const latestTip = latestWriting?.assessment?.improvements[0];
+
+  const speak = (word: string, language: string) => {
+    Speech.stop();
+    Speech.speak(word, { language: language === "Kannada" ? "kn-IN" : "en-IN", rate: 0.8 });
+  };
+
+  const fmt = (n: number | null, digits = 0) => (n == null ? "–" : n.toFixed(digits));
+
+  const emptyReading = (
+    <Text style={styles.emptyText}>
+      {lang === "en"
+        ? "No reading attempts in this period yet."
+        : "ಈ ಅವಧಿಯಲ್ಲಿ ಇನ್ನೂ ಯಾವುದೇ ಓದುವ ಪ್ರಯತ್ನಗಳಿಲ್ಲ."}
+    </Text>
+  );
 
   return (
     <View style={styles.container}>
@@ -49,7 +125,7 @@ export default function ProgressScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => setLang(lang === "en" ? "kn" : "en")}
+              onPress={toggleLang}
               style={styles.langPill}
               accessibilityRole="button"
               accessibilityLabel="Switch language"
@@ -98,9 +174,9 @@ export default function ProgressScreen() {
               <View style={styles.kpiCard}>
                 <View style={styles.kpiTopRow}>
                   <AppIcon name="chart" size={15} color="#0B3D2E" />
-                  <Text style={styles.kpiBadge}>+3.4%</Text>
+                  <Text style={styles.kpiBadge}>{reading.length} {lang === "en" ? "reads" : "ಓದು"}</Text>
                 </View>
-                <Text style={styles.kpiValue}>92.4%</Text>
+                <Text style={styles.kpiValue}>{avgAccuracy == null ? "–" : `${fmt(avgAccuracy, 1)}%`}</Text>
                 <Text style={styles.kpiLabel}>
                   {lang === "en" ? "Average Accuracy" : "ಸರಾಸರಿ ನಿಖರತೆ"}
                 </Text>
@@ -109,9 +185,9 @@ export default function ProgressScreen() {
               <View style={styles.kpiCard}>
                 <View style={styles.kpiTopRow}>
                   <AppIcon name="speed" size={15} color="#0B3D2E" />
-                  <Text style={styles.kpiBadge}>+6 wpm</Text>
+                  <Text style={styles.kpiBadge}>{lang === "en" ? "avg" : "ಸರಾಸರಿ"}</Text>
                 </View>
-                <Text style={styles.kpiValue}>80 WPM</Text>
+                <Text style={styles.kpiValue}>{avgWpm == null ? "–" : `${fmt(avgWpm)} WPM`}</Text>
                 <Text style={styles.kpiLabel}>
                   {lang === "en" ? "Reading Speed" : "ಓದುವ ವೇಗ"}
                 </Text>
@@ -120,9 +196,9 @@ export default function ProgressScreen() {
               <View style={styles.kpiCard}>
                 <View style={styles.kpiTopRow}>
                   <AppIcon name="pencil" size={15} color="#0B3D2E" />
-                  <Text style={styles.kpiBadge}>Good</Text>
+                  <Text style={styles.kpiBadge}>{writing.length} {lang === "en" ? "essays" : "ಬರಹ"}</Text>
                 </View>
-                <Text style={styles.kpiValue}>8.6 / 10</Text>
+                <Text style={styles.kpiValue}>{avgWriting == null ? "–" : `${fmt(avgWriting, 1)} / 10`}</Text>
                 <Text style={styles.kpiLabel}>
                   {lang === "en" ? "Writing Score" : "ಬರವಣಿಗೆ ಅಂಕ"}
                 </Text>
@@ -131,9 +207,11 @@ export default function ProgressScreen() {
               <View style={styles.kpiCard}>
                 <View style={styles.kpiTopRow}>
                   <AppIcon name="doc" size={15} color="#0B3D2E" />
-                  <Text style={styles.kpiBadge}>Synced</Text>
+                  <Text style={styles.kpiBadge}>
+                    {pendingCount > 0 ? `${pendingCount} ${lang === "en" ? "pending" : "ಬಾಕಿ"}` : lang === "en" ? "Synced" : "ಸಿಂಕ್"}
+                  </Text>
                 </View>
-                <Text style={styles.kpiValue}>18</Text>
+                <Text style={styles.kpiValue}>{totalSessions}</Text>
                 <Text style={styles.kpiLabel}>
                   {lang === "en" ? "Total Sessions" : "ಅಧಿವೇಶನಗಳು"}
                 </Text>
@@ -192,33 +270,45 @@ export default function ProgressScreen() {
             {/* READING CONTENT */}
             {activeTab === "reading" && (
               <View style={styles.tabContentWrap}>
-                {/* Weekly Trend Bar Chart */}
+                {/* Accuracy Trend Bar Chart */}
                 <View style={styles.chartCard}>
                   <View style={styles.chartHeader}>
                     <Text style={styles.cardHeaderTitle}>
-                      {lang === "en" ? "Daily Reading Accuracy" : "ದೈನಂದಿನ ಓದುವ ನಿಖರತೆ"}
+                      {lang === "en" ? "Reading Accuracy Trend" : "ಓದುವ ನಿಖರತೆಯ ಪ್ರವೃತ್ತಿ"}
                     </Text>
                     <Text style={styles.chartTarget}>Target 85%+</Text>
                   </View>
 
-                  <View style={styles.barsArea}>
-                    {weeklyTrend.map((item, idx) => (
-                      <View key={idx} style={styles.barColumn}>
-                        <Text style={styles.barTopNum}>{item.accuracy}%</Text>
-                        <View style={styles.barTrack}>
-                          <View
-                            style={[
-                              styles.barFill,
-                              { height: `${(item.accuracy - 68) * 3.5}%` },
-                              item.accuracy >= 92 && styles.barFillHigh,
-                            ]}
-                          />
-                        </View>
-                        <Text style={styles.barDayLabel}>{item.day}</Text>
-                        <Text style={styles.barWpmLabel}>{item.wpm}w</Text>
-                      </View>
-                    ))}
-                  </View>
+                  {trend.length === 0 ? (
+                    emptyReading
+                  ) : (
+                    <View style={styles.barsArea}>
+                      {trend.map((item) => (
+                        <TouchableOpacity
+                          key={item.id}
+                          activeOpacity={0.7}
+                          style={styles.barColumn}
+                          onPress={() => router.push({ pathname: "/reading/result", params: { id: item.id } })}
+                          accessibilityLabel={`${item.title}: ${item.accuracy}%`}
+                        >
+                          <Text style={styles.barTopNum}>{Math.round(item.accuracy)}%</Text>
+                          <View style={styles.barTrack}>
+                            <View
+                              style={[
+                                styles.barFill,
+                                { height: `${Math.max(4, item.accuracy)}%` },
+                                item.accuracy >= 85 && styles.barFillHigh,
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.barDayLabel} numberOfLines={1}>
+                            {attemptDate(item).replace("Today, ", "").replace("Yesterday", "Yday")}
+                          </Text>
+                          <Text style={styles.barWpmLabel}>{item.wpm}w</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
 
                 {/* Bilingual Fluency Breakdown */}
@@ -232,30 +322,26 @@ export default function ProgressScreen() {
                       : "ಇಂಗ್ಲಿಷ್ ಮತ್ತು ಕನ್ನಡ ಓದುವಿಕೆಯ ನಡುವಿನ ಹೋಲಿಕೆ."}
                   </Text>
 
-                  {/* English bar */}
-                  <View style={styles.progressLine}>
-                    <View style={styles.progressHeader}>
-                      <Text style={styles.progressLang}>English</Text>
-                      <Text style={styles.progressValue}>94% • 82 WPM</Text>
+                  {byLanguage.map((l) => (
+                    <View key={l.language} style={styles.progressLine}>
+                      <View style={styles.progressHeader}>
+                        <Text style={styles.progressLang}>
+                          {l.language === "English" ? "English" : "Kannada (ಕನ್ನಡ)"}
+                        </Text>
+                        <Text style={styles.progressValue}>
+                          {l.count === 0
+                            ? lang === "en" ? "Not attempted" : "ಪ್ರಯತ್ನಿಸಿಲ್ಲ"
+                            : `${fmt(l.accuracy)}% • ${fmt(l.wpm)} WPM`}
+                        </Text>
+                      </View>
+                      <View style={styles.track}>
+                        <View style={[styles.fill, { width: `${l.accuracy ?? 0}%` }]} />
+                      </View>
                     </View>
-                    <View style={styles.track}>
-                      <View style={[styles.fill, { width: "94%" }]} />
-                    </View>
-                  </View>
-
-                  {/* Kannada bar */}
-                  <View style={styles.progressLine}>
-                    <View style={styles.progressHeader}>
-                      <Text style={styles.progressLang}>Kannada (ಕನ್ನಡ)</Text>
-                      <Text style={styles.progressValue}>91% • 76 WPM</Text>
-                    </View>
-                    <View style={styles.track}>
-                      <View style={[styles.fill, { width: "91%" }]} />
-                    </View>
-                  </View>
+                  ))}
                 </View>
 
-                {/* Vosk Alignment Error Breakdown */}
+                {/* Word Alignment Error Breakdown */}
                 <View style={styles.chartCard}>
                   <Text style={styles.cardHeaderTitle}>
                     {lang === "en"
@@ -264,28 +350,36 @@ export default function ProgressScreen() {
                   </Text>
                   <Text style={styles.cardSubtitle}>
                     {lang === "en"
-                      ? "Vosk speech engine word-level classification."
-                      : "ಸಾಧನದಲ್ಲಿನ ಮಾದರಿಯ ಪದ ವಿಂಗಡಣೆ."}
+                      ? "Share of passage words read correctly, changed, skipped, or added."
+                      : "ಸರಿಯಾಗಿ, ಬದಲಾಗಿ, ಬಿಟ್ಟು ಅಥವಾ ಹೆಚ್ಚುವರಿಯಾಗಿ ಓದಿದ ಪದಗಳ ಪಾಲು."}
                   </Text>
 
-                  <View style={styles.alignGrid}>
-                    <View style={styles.alignItem}>
-                      <Text style={[styles.alignNum, { color: "#0B3D2E" }]}>88%</Text>
-                      <Text style={styles.alignLabel}>Correct</Text>
+                  {refWords === 0 ? (
+                    <Text style={styles.emptyText}>
+                      {lang === "en"
+                        ? "Complete a reading assessment to see your word breakdown."
+                        : "ಪದ ವಿಶ್ಲೇಷಣೆ ನೋಡಲು ಓದುವ ಮೌಲ್ಯಮಾಪನ ಪೂರ್ಣಗೊಳಿಸಿ."}
+                    </Text>
+                  ) : (
+                    <View style={styles.alignGrid}>
+                      <View style={styles.alignItem}>
+                        <Text style={[styles.alignNum, { color: "#0B3D2E" }]}>{correctPct}%</Text>
+                        <Text style={styles.alignLabel}>Correct</Text>
+                      </View>
+                      <View style={styles.alignItem}>
+                        <Text style={[styles.alignNum, { color: "#D97706" }]}>{pct(subs)}%</Text>
+                        <Text style={styles.alignLabel}>Substitution</Text>
+                      </View>
+                      <View style={styles.alignItem}>
+                        <Text style={[styles.alignNum, { color: "#DC2626" }]}>{pct(oms)}%</Text>
+                        <Text style={styles.alignLabel}>Omission</Text>
+                      </View>
+                      <View style={styles.alignItem}>
+                        <Text style={[styles.alignNum, { color: "#2563EB" }]}>{pct(ins)}%</Text>
+                        <Text style={styles.alignLabel}>Insertion</Text>
+                      </View>
                     </View>
-                    <View style={styles.alignItem}>
-                      <Text style={[styles.alignNum, { color: "#D97706" }]}>6%</Text>
-                      <Text style={styles.alignLabel}>Substitution</Text>
-                    </View>
-                    <View style={styles.alignItem}>
-                      <Text style={[styles.alignNum, { color: "#DC2626" }]}>4%</Text>
-                      <Text style={styles.alignLabel}>Omission</Text>
-                    </View>
-                    <View style={styles.alignItem}>
-                      <Text style={[styles.alignNum, { color: "#2563EB" }]}>2%</Text>
-                      <Text style={styles.alignLabel}>Insertion</Text>
-                    </View>
-                  </View>
+                  )}
                 </View>
 
                 {/* Practice Words List */}
@@ -295,33 +389,44 @@ export default function ProgressScreen() {
                       {lang === "en" ? "Practice Words" : "ಅಭ್ಯಾಸ ಪದಗಳು"}
                     </Text>
                     <Text style={styles.chartTarget}>
-                      {mockPracticeWordsList.length} Words
+                      {practice.length} {lang === "en" ? "Words" : "ಪದಗಳು"}
                     </Text>
                   </View>
 
-                  <View style={styles.wordsWrap}>
-                    {mockPracticeWordsList.map((pw, i) => (
-                      <View key={i} style={styles.wordRow}>
-                        <View style={styles.wordInfo}>
-                          <Text style={styles.wordPrimary}>{pw.word}</Text>
-                          <Text style={styles.wordSec}>{pw.phonetics} • {pw.kannada}</Text>
-                        </View>
-                        <View style={styles.wordActions}>
-                          <View style={styles.tagBadge}>
-                            <Text style={styles.tagText}>{pw.difficulty}</Text>
+                  {practice.length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      {lang === "en" ? "No practice words yet. Great reading!" : "ಇನ್ನೂ ಅಭ್ಯಾಸ ಪದಗಳಿಲ್ಲ!"}
+                    </Text>
+                  ) : (
+                    <View style={styles.wordsWrap}>
+                      {practice.map((pw) => (
+                        <View key={pw.word} style={styles.wordRow}>
+                          <View style={styles.wordInfo}>
+                            <Text style={styles.wordPrimary}>{pw.word}</Text>
+                            <Text style={styles.wordSec}>
+                              {pw.language} • {lang === "en" ? `missed ${pw.count}×` : `${pw.count} ಬಾರಿ ತಪ್ಪು`}
+                            </Text>
                           </View>
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.speakerBtn}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Listen to ${pw.word}`}
-                          >
-                            <AppIcon name="sound" size={14} color="#0B3D2E" />
-                          </TouchableOpacity>
+                          <View style={styles.wordActions}>
+                            <View style={styles.tagBadge}>
+                              <Text style={styles.tagText}>
+                                {pw.count >= 3 ? "Hard" : pw.count === 2 ? "Medium" : "Easy"}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              style={styles.speakerBtn}
+                              onPress={() => speak(pw.word, pw.language)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Listen to ${pw.word}`}
+                            >
+                              <AppIcon name="sound" size={14} color="#0B3D2E" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
-                    ))}
-                  </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </View>
             )}
@@ -335,81 +440,91 @@ export default function ProgressScreen() {
                   </Text>
                   <Text style={styles.cardSubtitle}>
                     {lang === "en"
-                      ? "Automated assessment metrics from student OCR handwriting text."
-                      : "ಕೈಬರಹದ OCR ಆಧಾರಿತ ಮೌಲ್ಯಮಾಪನ ಅಂಕಗಳು."}
+                      ? "Average scores across your assessed writing."
+                      : "ನಿಮ್ಮ ಬರವಣಿಗೆಯ ಸರಾಸರಿ ಅಂಕಗಳು."}
                   </Text>
 
-                  <View style={styles.rubricWrap}>
-                    <View style={styles.progressLine}>
-                      <View style={styles.progressHeader}>
-                        <Text style={styles.progressLang}>Spelling & Orthography</Text>
-                        <Text style={styles.progressValue}>92%</Text>
-                      </View>
-                      <View style={styles.track}>
-                        <View style={[styles.fill, { width: "92%" }]} />
-                      </View>
+                  {writing.length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      {lang === "en" ? "No writing assessed in this period yet." : "ಈ ಅವಧಿಯಲ್ಲಿ ಯಾವುದೇ ಬರವಣಿಗೆ ಇಲ್ಲ."}
+                    </Text>
+                  ) : (
+                    <View style={styles.rubricWrap}>
+                      {[
+                        { label: "Spelling & Orthography", value: avgRubric.spelling },
+                        { label: "Grammar & Sentence Syntax", value: avgRubric.grammar },
+                        { label: "Vocabulary Diversity", value: avgRubric.vocabulary },
+                        { label: "OCR Handwriting Legibility", value: avgRubric.ocr },
+                      ]
+                        .filter((r) => r.value != null)
+                        .map((r) => (
+                          <View key={r.label} style={styles.progressLine}>
+                            <View style={styles.progressHeader}>
+                              <Text style={styles.progressLang}>{r.label}</Text>
+                              <Text style={styles.progressValue}>{fmt(r.value)}%</Text>
+                            </View>
+                            <View style={styles.track}>
+                              <View style={[styles.fill, { width: `${r.value ?? 0}%` }]} />
+                            </View>
+                          </View>
+                        ))}
                     </View>
-
-                    <View style={styles.progressLine}>
-                      <View style={styles.progressHeader}>
-                        <Text style={styles.progressLang}>Grammar & Sentence Syntax</Text>
-                        <Text style={styles.progressValue}>88%</Text>
-                      </View>
-                      <View style={styles.track}>
-                        <View style={[styles.fill, { width: "88%" }]} />
-                      </View>
-                    </View>
-
-                    <View style={styles.progressLine}>
-                      <View style={styles.progressHeader}>
-                        <Text style={styles.progressLang}>Vocabulary Diversity</Text>
-                        <Text style={styles.progressValue}>84%</Text>
-                      </View>
-                      <View style={styles.track}>
-                        <View style={[styles.fill, { width: "84%" }]} />
-                      </View>
-                    </View>
-
-                    <View style={styles.progressLine}>
-                      <View style={styles.progressHeader}>
-                        <Text style={styles.progressLang}>OCR Handwriting Legibility</Text>
-                        <Text style={styles.progressValue}>96%</Text>
-                      </View>
-                      <View style={styles.track}>
-                        <View style={[styles.fill, { width: "96%" }]} />
-                      </View>
-                    </View>
-                  </View>
+                  )}
                 </View>
 
-                {/* AI Qualitative Feedback */}
-                <View style={styles.chartCard}>
-                  <View style={styles.chartHeader}>
-                    <Text style={styles.cardHeaderTitle}>
-                      {lang === "en" ? "Diagnostic Feedback" : "ವಿಶ್ಲೇಷಣಾತ್ಮಕ ಸಲಹೆಗಳು"}
-                    </Text>
-                    <View style={styles.tagBadge}>
-                      <Text style={styles.tagText}>Gemini AI</Text>
+                {/* Latest qualitative feedback */}
+                {latestWriting ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => router.push({ pathname: "/writing/result", params: { id: latestWriting.id } })}
+                    style={styles.chartCard}
+                  >
+                    <View style={styles.chartHeader}>
+                      <Text style={styles.cardHeaderTitle}>
+                        {lang === "en" ? "Latest Feedback" : "ಇತ್ತೀಚಿನ ಪ್ರತಿಕ್ರಿಯೆ"}
+                      </Text>
+                      <View style={styles.tagBadge}>
+                        <Text style={styles.tagText}>AI</Text>
+                      </View>
                     </View>
-                  </View>
 
-                  <Text style={styles.feedbackQuote}>
-                    "{mockWritingAttempts[0].aiFeedback}"
-                  </Text>
-
-                  <View style={styles.tipBox}>
-                    <AppIcon name="sparkles" size={14} color="#0B3D2E" />
-                    <Text style={styles.tipText}>
-                      Focus on maintaining consistent past-tense verbs in descriptive paragraphs.
+                    <Text style={styles.feedbackQuote}>
+                      &quot;{latestWriting.aiFeedback}&quot;
                     </Text>
-                  </View>
-                </View>
+
+                    {latestTip ? (
+                      <View style={styles.tipBox}>
+                        <AppIcon name="sparkles" size={14} color="#0B3D2E" />
+                        <Text style={styles.tipText}>{latestTip}</Text>
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                ) : null}
+
+                {writing.map((w) => (
+                  <TouchableOpacity
+                    key={w.id}
+                    activeOpacity={0.85}
+                    onPress={() => router.push({ pathname: "/writing/result", params: { id: w.id } })}
+                    style={[styles.wordRow, styles.writingRow]}
+                  >
+                    <View style={styles.wordInfo}>
+                      <Text style={styles.wordPrimary} numberOfLines={1}>
+                        {lang === "en" ? w.prompt : w.kannadaPrompt}
+                      </Text>
+                      <Text style={styles.wordSec}>
+                        {attemptDate(w)} • {w.wordCount} {lang === "en" ? "words" : "ಪದಗಳು"}
+                      </Text>
+                    </View>
+                    <Text style={styles.progressValue}>{w.score.toFixed(1)} / 10</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
           </ScrollView>
 
           {/* Persistent Bottom Nav */}
-          <BottomNavBar activeTab="progress" />
+          <BottomNavBar activeTab="progress" syncBadgeCount={pendingCount} />
         </SafeAreaView>
       </View>
     </View>
@@ -417,6 +532,20 @@ export default function ProgressScreen() {
 }
 
 const styles = StyleSheet.create({
+  emptyText: {
+    fontSize: 12.5,
+    color: "#688478",
+    textAlign: "center",
+    paddingVertical: 14,
+  },
+  writingRow: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2ECE6",
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
   container: {
     flex: 1,
     width: "100%",

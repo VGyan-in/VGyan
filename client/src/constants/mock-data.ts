@@ -1,3 +1,6 @@
+import type { AlignedWord } from "@/features/reading/analyzer";
+import type { AiFeedback, WritingAssessment } from "@/features/feedback/ai";
+
 export interface StudentProfile {
   studentId: string;
   participantId: string;
@@ -40,7 +43,22 @@ export interface ReadingAttempt {
   durationSec: number;
   mistakesCount: number;
   practiceWords: string[];
-  aiStatus: "completed" | "synced";
+  aiStatus: "pending" | "completed" | "failed" | "synced";
+  // Fields below are recorded for attempts made in the app (absent on seed data).
+  createdAt?: string;
+  synced?: boolean;
+  passageId?: string;
+  referenceText?: string;
+  transcript?: string;
+  audioUri?: string | null;
+  asrConfidence?: number;
+  asrModelVersion?: string;
+  wcpm?: number;
+  substitutions?: number;
+  omissions?: number;
+  insertions?: number;
+  words?: AlignedWord[];
+  feedback?: AiFeedback;
 }
 
 export interface WritingAttempt {
@@ -56,6 +74,19 @@ export interface WritingAttempt {
   spellingScore: number;
   ocrAccuracy: number;
   aiFeedback: string;
+  // Fields below are recorded for attempts made in the app (absent on seed data).
+  createdAt?: string;
+  synced?: boolean;
+  aiStatus?: "pending" | "completed" | "failed";
+  promptId?: string;
+  inputMethod?: "typed" | "camera" | "gallery";
+  imageUri?: string | null;
+  /** Raw OCR output, never overwritten by the student's correction. */
+  originalOcr?: string | null;
+  ocrConfidence?: number | null;
+  correctedText?: string;
+  sentenceCount?: number;
+  assessment?: WritingAssessment;
 }
 
 export interface SyncStatus {

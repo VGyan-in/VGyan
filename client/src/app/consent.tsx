@@ -12,23 +12,25 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
-import { initialStudentProfile } from "@/constants/mock-data";
+import { useApp } from "@/state/app-store";
 
 export default function ConsentGateScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const isViewOnly = params.viewOnly === "true";
 
-  const [lang, setLang] = useState<"en" | "kn">("en");
-  const [signerRole, setSignerRole] = useState<"guardian" | "student">("guardian");
-  const [signerName, setSignerName] = useState(
-    signerRole === "guardian" ? "Ramesh Sharma" : initialStudentProfile.name
+  const { lang, toggleLang, profile: initialStudentProfile, consent, acceptConsent } = useApp();
+  const existing = consent?.status === "active" ? consent : null;
+  const [signerRole, setSignerRole] = useState<"guardian" | "student">(
+    existing?.signerType ?? "guardian"
   );
-  const [relationship, setRelationship] = useState("Father");
+  const [signerName, setSignerName] = useState(existing?.signerName ?? "");
+  const [relationship, setRelationship] = useState(existing?.signerRelation ?? "Father");
 
-  const [consentStudy, setConsentStudy] = useState(true);
-  const [consentAudioWriting, setConsentAudioWriting] = useState(true);
-  const [consentAccuracy, setConsentAccuracy] = useState(true);
+  // Consent boxes start unticked: agreement must be an explicit action.
+  const [consentStudy, setConsentStudy] = useState(!!existing);
+  const [consentAudioWriting, setConsentAudioWriting] = useState(!!existing);
+  const [consentAccuracy, setConsentAccuracy] = useState(!!existing);
 
   const isFormValid =
     consentStudy &&
@@ -50,7 +52,20 @@ export default function ConsentGateScreen() {
       return;
     }
 
-    router.replace("/home");
+    acceptConsent({
+      consentVersion: "v1.0",
+      acceptedAt: new Date().toISOString(),
+      signerType: signerRole,
+      signerName: signerName.trim(),
+      signerRelation: relationship.trim(),
+      language: lang,
+      audioConsent: consentAudioWriting,
+      handwritingConsent: consentAudioWriting,
+      researchConsent: consentStudy,
+      status: "active",
+    });
+    if (isViewOnly && router.canGoBack()) router.back();
+    else router.replace("/home");
   };
 
   const handleBack = () => {
@@ -89,7 +104,7 @@ export default function ConsentGateScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => setLang(lang === "en" ? "kn" : "en")}
+              onPress={toggleLang}
               style={styles.langPill}
               accessibilityRole="button"
               accessibilityLabel="Switch language"
@@ -152,7 +167,7 @@ export default function ConsentGateScreen() {
                 activeOpacity={0.8}
                 onPress={() => {
                   setSignerRole("guardian");
-                  setSignerName("Ramesh Sharma");
+                  setSignerName("");
                   setRelationship("Father");
                 }}
                 style={[

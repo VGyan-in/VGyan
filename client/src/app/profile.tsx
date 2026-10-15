@@ -12,37 +12,48 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
-import {
-  initialStudentProfile,
-  initialConsentState,
-  initialSyncStatus,
-} from "@/constants/mock-data";
 import { BottomNavBar } from "@/components/bottom-nav-bar";
+import { useApp } from "@/state/app-store";
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [lang, setLang] = useState<"en" | "kn">("en");
-  const [autoSyncWifi, setAutoSyncWifi] = useState(initialSyncStatus.autoSyncWifi);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const {
+    lang,
+    toggleLang,
+    profile: initialStudentProfile,
+    consent,
+    sync: initialSyncStatus,
+    pendingCount,
+    setAutoSyncWifi,
+    syncNow,
+    logout,
+  } = useApp();
+  const autoSyncWifi = initialSyncStatus.autoSyncWifi;
+  const isSyncing = initialSyncStatus.isSyncing;
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
 
-  const handleSyncNow = () => {
-    setIsSyncing(true);
+  const handleSyncNow = async () => {
     setSyncSuccessMsg(null);
-    setTimeout(() => {
-      setIsSyncing(false);
-      setSyncSuccessMsg(
-        lang === "en"
-          ? "All 18 records, 12 audio files, and 6 OCR samples synced."
-          : "ಎಲ್ಲಾ ದಾಖಲೆಗಳು ಮತ್ತು ಆಡಿಯೋಗಳು ಯಶಸ್ವಿಯಾಗಿ ಸಿಂಕ್ ಆಗಿವೆ."
-      );
-      setTimeout(() => setSyncSuccessMsg(null), 3500);
-    }, 1200);
+    const count = await syncNow();
+    setSyncSuccessMsg(
+      lang === "en"
+        ? count > 0
+          ? `${count} new record${count === 1 ? "" : "s"} synced with audio and images.`
+          : "Everything was already up to date."
+        : "ಎಲ್ಲಾ ದಾಖಲೆಗಳು ಯಶಸ್ವಿಯಾಗಿ ಸಿಂಕ್ ಆಗಿವೆ."
+    );
+    setTimeout(() => setSyncSuccessMsg(null), 3500);
   };
 
   const handleLogout = () => {
+    logout();
     router.replace("/login");
   };
+
+  const consentActive = consent?.status === "active";
+  const consentDate = consent
+    ? new Date(consent.acceptedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    : "";
 
   const initials = initialStudentProfile.name
     .split(" ")
@@ -67,7 +78,7 @@ export default function ProfileScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => setLang(lang === "en" ? "kn" : "en")}
+              onPress={toggleLang}
               style={styles.langPill}
               accessibilityRole="button"
               accessibilityLabel="Switch language"
@@ -133,40 +144,56 @@ export default function ProfileScreen() {
 
             <View style={styles.card}>
               <View style={styles.cardTopRow}>
-                <View style={styles.verifiedBadge}>
-                  <AppIcon name="shield" size={13} color="#0B3D2E" />
-                  <Text style={styles.verifiedBadgeText}>
-                    {lang === "en" ? "Active (v1.0)" : "ಸಕ್ರಿಯವಾಗಿದೆ (v1.0)"}
+                <View style={[styles.verifiedBadge, !consentActive && { backgroundColor: "#FEF3C7" }]}>
+                  <AppIcon name={consentActive ? "shield" : "alert"} size={13} color={consentActive ? "#0B3D2E" : "#B45309"} />
+                  <Text style={[styles.verifiedBadgeText, !consentActive && { color: "#B45309" }]}>
+                    {consentActive
+                      ? lang === "en" ? `Active (${consent!.consentVersion})` : `ಸಕ್ರಿಯವಾಗಿದೆ (${consent!.consentVersion})`
+                      : lang === "en" ? "Not given" : "ನೀಡಿಲ್ಲ"}
                   </Text>
                 </View>
                 <TouchableOpacity
                   activeOpacity={0.7}
-                  onPress={() => router.push("/consent?viewOnly=true")}
+                  onPress={() => router.push({ pathname: "/consent", params: { viewOnly: "true" } })}
                   style={styles.linkButton}
                 >
                   <Text style={styles.linkButtonText}>
-                    {lang === "en" ? "View Agreement" : "ಪರಿಶೀಲಿಸಿ"}
+                    {consentActive
+                      ? lang === "en" ? "View Agreement" : "ಪರಿಶೀಲಿಸಿ"
+                      : lang === "en" ? "Give Consent" : "ಸಮ್ಮತಿ ನೀಡಿ"}
                   </Text>
                   <AppIcon name="chevron-forward" size={11} color="#0B3D2E" />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.dataLines}>
-                <View style={styles.dataLine}>
-                  <Text style={styles.dataLabel}>Signer:</Text>
+              {consent && consentActive ? (
+                <View style={styles.dataLines}>
+                  <View style={styles.dataLine}>
+                    <Text style={styles.dataLabel}>Signer:</Text>
+                    <Text style={styles.dataVal}>
+                      {consent.signerName} ({consent.signerRelation})
+                    </Text>
+                  </View>
+                  <View style={styles.dataLine}>
+                    <Text style={styles.dataLabel}>Accepted:</Text>
+                    <Text style={styles.dataVal}>
+                      {consentDate} • {consent.language === "kn" ? "Kannada" : consent.language === "en" ? "English" : "Bilingual"}
+                    </Text>
+                  </View>
+                  <View style={styles.dataLine}>
+                    <Text style={styles.dataLabel}>Data Scope:</Text>
+                    <Text style={styles.dataVal}>16 kHz Audio • Handwriting OCR</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.dataLines}>
                   <Text style={styles.dataVal}>
-                    {initialConsentState.signerName} ({initialConsentState.signerRelation})
+                    {lang === "en"
+                      ? "Reading and writing assessments are locked until consent is recorded."
+                      : "ಸಮ್ಮತಿ ದಾಖಲಾಗುವವರೆಗೆ ಮೌಲ್ಯಮಾಪನಗಳು ಲಾಕ್ ಆಗಿರುತ್ತವೆ."}
                   </Text>
                 </View>
-                <View style={styles.dataLine}>
-                  <Text style={styles.dataLabel}>Accepted:</Text>
-                  <Text style={styles.dataVal}>01 Oct 2026 • Bilingual</Text>
-                </View>
-                <View style={styles.dataLine}>
-                  <Text style={styles.dataLabel}>Data Scope:</Text>
-                  <Text style={styles.dataVal}>16 kHz Audio • Handwriting OCR</Text>
-                </View>
-              </View>
+              )}
             </View>
 
             {/* Offline & Cloud Sync Center */}
@@ -187,6 +214,8 @@ export default function ProfileScreen() {
                   <Text style={styles.syncStatusHeading}>
                     {isSyncing
                       ? lang === "en" ? "Syncing in progress..." : "ಸಿಂಕ್ ಆಗುತ್ತಿದೆ..."
+                      : pendingCount > 0
+                      ? lang === "en" ? `${pendingCount} Record${pendingCount === 1 ? "" : "s"} Waiting to Sync` : `${pendingCount} ದಾಖಲೆಗಳು ಸಿಂಕ್‌ಗೆ ಕಾಯುತ್ತಿವೆ`
                       : lang === "en" ? "All Local Records Up to Date" : "ಎಲ್ಲಾ ದಾಖಲೆಗಳು ಸಿಂಕ್ ಆಗಿವೆ"}
                   </Text>
                   <Text style={styles.syncStatusSub}>
@@ -278,21 +307,21 @@ export default function ProfileScreen() {
               <View style={styles.engineLine}>
                 <Text style={styles.engineText}>Vosk TDNN English Model</Text>
                 <View style={styles.engineBadge}>
-                  <Text style={styles.engineBadgeText}>v0.22 Ready</Text>
+                  <Text style={styles.engineBadgeText}>Simulated</Text>
                 </View>
               </View>
               <View style={styles.lineDivider} />
               <View style={styles.engineLine}>
                 <Text style={styles.engineText}>Vosk TDNN Kannada Model</Text>
                 <View style={styles.engineBadge}>
-                  <Text style={styles.engineBadgeText}>v0.1 Ready</Text>
+                  <Text style={styles.engineBadgeText}>Simulated</Text>
                 </View>
               </View>
               <View style={styles.lineDivider} />
               <View style={styles.engineLine}>
                 <Text style={styles.engineText}>Gemini Qualitative AI</Text>
                 <View style={styles.engineBadge}>
-                  <Text style={styles.engineBadgeText}>Connected</Text>
+                  <Text style={styles.engineBadgeText}>Local stub</Text>
                 </View>
               </View>
             </View>
@@ -313,7 +342,7 @@ export default function ProfileScreen() {
           </ScrollView>
 
           {/* Persistent Bottom Nav */}
-          <BottomNavBar activeTab="profile" />
+          <BottomNavBar activeTab="profile" syncBadgeCount={pendingCount} />
         </SafeAreaView>
       </View>
     </View>
