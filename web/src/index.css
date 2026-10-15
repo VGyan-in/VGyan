@@ -1,0 +1,159 @@
+:root {
+  /* Brand Theme Tokens (Strictly adhering to VGyan Mobile Design) */
+  --color-deep-forest: #0B3D2E;   /* Primary Brand */
+  --color-deep-forest-hover: #072B20;
+  --color-mint-teal: #2EC4B6;     /* Interactive Accent */
+  --color-fresh-green: #84CC16;   /* Growth & Success */
+  --color-sun-glow: #FBBF24;      /* Accent Gold */
+  --color-warm-orange: #F97316;   /* Motivation & Alert */
+  --color-risk-red: #EF4444;      /* Severe Warning */
+  
+  --color-soft-cream: #FAF6EF;    /* App Background */
+  --color-soft-cream-alt: #FDFBF7;
+  --color-surface-white: #FFFFFF; /* Elevated Card */
+  --color-light-green: #E8F5E9;   /* Subtle Surface Tint */
+  --color-leaf-tint: #DCE9D6;     /* Border / Active tab */
+  
+  --color-slate-900: #0F172A;
+  --color-slate-800: #1E293B;
+  --color-slate-700: #334155;     /* Body Text */
+  --color-slate-500: #64748B;     /* Secondary Text */
+  --color-slate-400: #94A3B8;     /* Muted Text */
+  --color-slate-200: #E2ECE6;     /* Border Line */
+  --color-slate-100: #F1F5F3;
+
+  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --shadow-sm: 0 1px 2px 0 rgba(11, 61, 46, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(11, 61, 46, 0.08), 0 2px 6px -1px rgba(11, 61, 46, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(11, 61, 46, 0.12), 0 4px 10px -2px rgba(11, 61, 46, 0.06);
+  --shadow-glow: 0 0 20px rgba(46, 196, 182, 0.25);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: var(--color-soft-cream);
+  color: var(--color-slate-700);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-deep-forest);
+  letter-spacing: -0.02em;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 0.95rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.9rem;
+  color: var(--color-slate-800);
+  background: #FFFFFF;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-mint-teal);
+  box-shadow: 0 0 0 3px rgba(46, 196, 182, 0.2);
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-leaf-tint);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-mint-teal);
+}
+
+/* Utility Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-risk {
+  background-color: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FCA5A5;
+}
+
+.badge-warning {
+  background-color: #FFFBEB;
+  color: #D97706;
+  border: 1px solid #FDE68A;
+}
+
+.badge-success {
+  background-color: #ECFDF5;
+  color: #059669;
+  border: 1px solid #A7F3D0;
+}
+
+.badge-teal {
+  background-color: #E6FFFA;
+  color: #0D9488;
+  border: 1px solid #99F6E4;
+}
+
+.badge-forest {
+  background-color: var(--color-light-green);
+  color: var(--color-deep-forest);
+  border: 1px solid var(--color-leaf-tint);
+}
