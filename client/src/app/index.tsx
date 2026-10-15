@@ -9,9 +9,9 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { AppIcon, IconName } from "@/components/ui/app-icon";
-import { useApp } from "@/state/app-store";
+import { useApp, useEntryRoute } from "@/state/app-store";
 
 const INK = "#0B3D2E";
 const BODY = "#3F5F53";
@@ -35,7 +35,11 @@ const SAMPLE: { w: string; s?: "changed" | "skipped"; said?: string }[] = [
 export default function WelcomeScreen() {
   const router = useRouter();
   const { lang, toggleLang } = useApp();
+  const entryRoute = useEntryRoute();
   const en = lang === "en";
+
+  // Signed-in students skip the landing page.
+  if (entryRoute) return <Redirect href={entryRoute} />;
 
   const points: { icon: IconName; title: string; body: string }[] = [
     {

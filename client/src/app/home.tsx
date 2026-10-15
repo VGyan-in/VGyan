@@ -8,12 +8,12 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
 import { BottomNavBar } from "@/components/bottom-nav-bar";
 import { WRITING_PROMPTS, findPassage, levelLabel } from "@/constants/content";
 import { useApp } from "@/state/app-store";
-import { attemptDate } from "@/utils/format";
+import { attemptDate, computeStreak } from "@/utils/format";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -23,7 +23,6 @@ export default function HomeScreen() {
     profile: initialStudentProfile,
     readingAttempts,
     writingAttempts,
-    sync,
     pendingCount,
   } = useApp();
   const [selectedLevel, setSelectedLevel] = useState<"Easy" | "Medium" | "Advanced">("Medium");
@@ -37,19 +36,25 @@ export default function HomeScreen() {
   const avgAccuracy = readingAttempts.length
     ? Math.round(readingAttempts.reduce((sum, a) => sum + a.accuracy, 0) / readingAttempts.length)
     : null;
-  // Live attempts (with createdAt) first, newest first; seed data keeps its order after them.
   const recent = [
-    ...readingAttempts.map((a) => ({ kind: "reading" as const, a, sortKey: a.createdAt ?? "" })),
-    ...writingAttempts.map((a) => ({ kind: "writing" as const, a, sortKey: a.createdAt ?? "" })),
+    ...readingAttempts.map((a) => ({ kind: "reading" as const, a })),
+    ...writingAttempts.map((a) => ({ kind: "writing" as const, a })),
   ]
-    .sort((x, y) => y.sortKey.localeCompare(x.sortKey))
+    .sort((x, y) => y.a.createdAt.localeCompare(x.a.createdAt))
     .slice(0, 4);
+  const totalAttempts = readingAttempts.length + writingAttempts.length;
+  const savedCount = totalAttempts;
+  const streak = computeStreak([...readingAttempts, ...writingAttempts].map((a) => a.createdAt));
+
+  if (!initialStudentProfile) return <Redirect href="/" />;
 
   const initials = initialStudentProfile.name
-    .split(" ")
+    .split(/\s+/)
+    .filter(Boolean)
     .map((n) => n[0])
     .join("")
-    .slice(0, 2);
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <View style={styles.container}>
@@ -65,9 +70,7 @@ export default function HomeScreen() {
                 <Text style={styles.greetingTitle}>
                   {lang === "en" ? "Namaskara," : "ನಮಸ್ಕಾರ,"}{" "}
                   <Text style={styles.studentNameHighlight}>
-                    {lang === "en"
-                      ? initialStudentProfile.name.split(" ")[0]
-                      : initialStudentProfile.kannadaName.split(" ")[0]}
+                    {initialStudentProfile.name.split(" ")[0]}
                   </Text>
                 </Text>
                 <View style={styles.idChip}>
@@ -101,19 +104,22 @@ export default function HomeScreen() {
               <View style={styles.syncLeft}>
                 <View style={[styles.statusDot, pendingCount > 0 && { backgroundColor: "#F59E0B" }]} />
                 <Text style={styles.syncText}>
-                  {lang === "en" ? "Offline-Ready" : "ಆಫ್‌ಲೈನ್ ಸಿದ್ಧ"} •{" "}
                   {pendingCount > 0
-                    ? `${pendingCount} ${lang === "en" ? "waiting to sync" : "ಸಿಂಕ್‌ಗೆ ಕಾಯುತ್ತಿವೆ"}`
-                    : `${sync.totalLocalRecords} ${lang === "en" ? "records synced" : "ದಾಖಲೆಗಳು ಸಿಂಕ್ ಆಗಿವೆ"}`}
+                    ? lang === "en"
+                      ? `Saved on this phone · ${pendingCount} to upload`
+                      : `ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ · ${pendingCount} ಅಪ್‌ಲೋಡ್ ಬಾಕಿ`
+                    : savedCount === 0
+                    ? lang === "en" ? "Ready when you are" : "ನೀವು ಸಿದ್ಧರಾದಾಗ ಪ್ರಾರಂಭಿಸಿ"
+                    : lang === "en" ? "All your work is uploaded" : "ನಿಮ್ಮ ಎಲ್ಲಾ ಕೆಲಸ ಅಪ್‌ಲೋಡ್ ಆಗಿದೆ"}
                 </Text>
               </View>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => router.push("/profile")}
+                onPress={() => router.replace("/profile")}
                 style={styles.syncAction}
               >
                 <Text style={styles.syncActionText}>
-                  {lang === "en" ? "Status" : "ವಿವರ"}
+                  {lang === "en" ? "Details" : "ವಿವರ"}
                 </Text>
                 <AppIcon name="chevron-forward" size={12} color="#0B3D2E" />
               </TouchableOpacity>
@@ -124,7 +130,7 @@ export default function HomeScreen() {
               <View style={styles.statBox}>
                 <View style={styles.statIconRow}>
                   <AppIcon name="flame" size={15} color="#0B3D2E" />
-                  <Text style={styles.statNum}>{initialStudentProfile.streakDays}</Text>
+                  <Text style={styles.statNum}>{streak}</Text>
                 </View>
                 <Text style={styles.statLabel}>
                   {lang === "en" ? "Day Streak" : "ಅಭ್ಯಾಸ ಸರಣಿ"}
@@ -136,7 +142,7 @@ export default function HomeScreen() {
               <View style={styles.statBox}>
                 <View style={styles.statIconRow}>
                   <AppIcon name="check" size={15} color="#0B3D2E" />
-                  <Text style={styles.statNum}>{initialStudentProfile.totalAssessments}</Text>
+                  <Text style={styles.statNum}>{totalAttempts}</Text>
                 </View>
                 <Text style={styles.statLabel}>
                   {lang === "en" ? "Completed" : "ಪೂರ್ಣಗೊಂಡಿದೆ"}
@@ -162,7 +168,7 @@ export default function HomeScreen() {
                 {lang === "en" ? "Assessments" : "ಮೌಲ್ಯಮಾಪನಗಳು"}
               </Text>
               <Text style={styles.sectionTagline}>
-                {lang === "en" ? "Bilingual AI Modules" : "ದ್ವಿಭಾಷಾ AI ಮಾಡ್ಯೂಲ್‌ಗಳು"}
+                {lang === "en" ? "English & ಕನ್ನಡ" : "ಇಂಗ್ಲಿಷ್ ಮತ್ತು ಕನ್ನಡ"}
               </Text>
             </View>
 
@@ -203,24 +209,24 @@ export default function HomeScreen() {
                 <View style={styles.cardHeaderInfo}>
                   <View style={styles.pillRow}>
                     <View style={styles.typeBadge}>
-                      <Text style={styles.typeBadgeText}>Reading</Text>
+                      <Text style={styles.typeBadgeText}>{lang === "en" ? "Reading" : "ಓದು"}</Text>
                     </View>
                     <View style={styles.asrBadge}>
-                      <Text style={styles.asrBadgeText}>Vosk TDNN ASR</Text>
+                      <Text style={styles.asrBadgeText}>{lang === "en" ? "Works offline" : "ಆಫ್‌ಲೈನ್"}</Text>
                     </View>
                   </View>
                   <Text style={styles.cardHeading}>
                     {lang === "en"
-                      ? "Oral Reading & Fluency"
-                      : "ಮೌಖಿಕ ಓದುವಿಕೆ ಮತ್ತು ನಿರರ್ಗಳತೆ"}
+                      ? "Read a story aloud"
+                      : "ಕಥೆಯನ್ನು ಗಟ್ಟಿಯಾಗಿ ಓದಿ"}
                   </Text>
                 </View>
               </View>
 
               <Text style={styles.cardBodyText}>
                 {lang === "en"
-                  ? "Read aloud in English or Kannada. Real-time on-device ASR computes word alignment, WPM, and accuracy."
-                  : "ಇಂಗ್ಲಿಷ್ ಅಥವಾ ಕನ್ನಡದಲ್ಲಿ ಗಟ್ಟಿಯಾಗಿ ಓದಿ. ಸಾಧನದ AI ನಿಖರತೆ ಮತ್ತು ವೇಗವನ್ನು ಅಳೆಯುತ್ತದೆ."}
+                  ? "Read in English or Kannada. See how many words you read correctly and how fast you read."
+                  : "ಇಂಗ್ಲಿಷ್ ಅಥವಾ ಕನ್ನಡದಲ್ಲಿ ಓದಿ. ಎಷ್ಟು ಪದಗಳನ್ನು ಸರಿಯಾಗಿ ಮತ್ತು ಎಷ್ಟು ವೇಗವಾಗಿ ಓದಿದಿರಿ ಎಂದು ನೋಡಿ."}
               </Text>
 
               <View style={styles.previewContainer}>
@@ -262,24 +268,24 @@ export default function HomeScreen() {
                 <View style={styles.cardHeaderInfo}>
                   <View style={styles.pillRow}>
                     <View style={styles.typeBadge}>
-                      <Text style={styles.typeBadgeText}>Writing</Text>
+                      <Text style={styles.typeBadgeText}>{lang === "en" ? "Writing" : "ಬರಹ"}</Text>
                     </View>
                     <View style={styles.asrBadge}>
-                      <Text style={styles.asrBadgeText}>OCR + AI Evaluation</Text>
+                      <Text style={styles.asrBadgeText}>{lang === "en" ? "Paper or typing" : "ಕಾಗದ ಅಥವಾ ಟೈಪ್"}</Text>
                     </View>
                   </View>
                   <Text style={styles.cardHeading}>
                     {lang === "en"
-                      ? "Handwriting OCR & Grading"
-                      : "ಕೈಬರಹದ OCR ಮತ್ತು ಮೌಲ್ಯಮಾಪನ"}
+                      ? "Write about a topic"
+                      : "ಒಂದು ವಿಷಯದ ಬಗ್ಗೆ ಬರೆಯಿರಿ"}
                   </Text>
                 </View>
               </View>
 
               <Text style={styles.cardBodyText}>
                 {lang === "en"
-                  ? "Capture your written answer via camera, gallery upload, or keyboard. Analyzes spelling, grammar, and vocabulary."
-                  : "ಕ್ಯಾಮೆರಾ ಮೂಲಕ ಫೋಟೋ ತೆಗೆಯಿರಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ. ವ್ಯಾಕರಣ ಮತ್ತು ಕಾಗುಣಿತದ ವಿಶ್ಲೇಷಣೆ ಪಡೆಯಿರಿ."}
+                  ? "Write on paper and take a photo, or type your answer. Get tips on spelling, grammar and words."
+                  : "ಕಾಗದದಲ್ಲಿ ಬರೆದು ಫೋಟೋ ತೆಗೆಯಿರಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ. ಕಾಗುಣಿತ, ವ್ಯಾಕರಣ ಮತ್ತು ಪದಗಳ ಸಲಹೆ ಪಡೆಯಿರಿ."}
               </Text>
 
               <View style={styles.previewContainer}>
@@ -317,7 +323,7 @@ export default function HomeScreen() {
               </Text>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => router.push("/progress")}
+                onPress={() => router.replace("/progress")}
               >
                 <Text style={styles.seeAllText}>
                   {lang === "en" ? "View All" : "ಎಲ್ಲವೂ"}

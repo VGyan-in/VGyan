@@ -51,8 +51,10 @@ export function tokenize(text: string): string[] {
 
 /**
  * Word-level Levenshtein alignment with backtrace.
- * Ties prefer match/substitution, then omission, then insertion so that
- * a skipped reference word is reported as an omission rather than a chain of substitutions.
+ * The backtrace runs from the end, and on equal cost prefers an omission, then a
+ * match/substitution, then an insertion. This aligns spoken words as early in the
+ * passage as possible, so a student who stops early gets "not reached" words at
+ * the end rather than a late word matched far down the passage.
  */
 export function alignWords(reference: string[], spoken: string[]): AlignedWord[] {
   const r = reference.map(normalizeWord);
@@ -75,6 +77,11 @@ export function alignWords(reference: string[], spoken: string[]): AlignedWord[]
   let i = n;
   let j = m;
   while (i > 0 || j > 0) {
+    if (i > 0 && dp[i][j] === dp[i - 1][j] + 1) {
+      out.push({ status: "omission", ref: reference[i - 1] });
+      i--;
+      continue;
+    }
     if (i > 0 && j > 0) {
       const cost = r[i - 1] === h[j - 1] ? 0 : 1;
       if (dp[i][j] === dp[i - 1][j - 1] + cost) {
@@ -88,13 +95,8 @@ export function alignWords(reference: string[], spoken: string[]): AlignedWord[]
         continue;
       }
     }
-    if (i > 0 && dp[i][j] === dp[i - 1][j] + 1) {
-      out.push({ status: "omission", ref: reference[i - 1] });
-      i--;
-    } else {
-      out.push({ status: "insertion", hyp: spoken[j - 1] });
-      j--;
-    }
+    out.push({ status: "insertion", hyp: spoken[j - 1] });
+    j--;
   }
   return out.reverse();
 }

@@ -7,15 +7,17 @@ import { getPassage } from "@/constants/content";
 import { analyzeReading } from "@/features/reading/analyzer";
 import { transcribe } from "@/features/reading/asr";
 import { requestReadingFeedback } from "@/features/feedback/ai";
+import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
-import { uuid } from "@/utils/format";
+import { newId } from "@/core/auth/credentials";
 
 type StepKey = "save" | "asr" | "analyse" | "feedback";
 type StepState = "waiting" | "running" | "done" | "failed";
 
 export default function ReadingProcessingScreen() {
   const router = useRouter();
-  const { lang, addReadingAttempt, updateReadingAttempt } = useApp();
+  const goHome = useGoHome();
+  const { lang, saveNewReading, updateReadingAttempt } = useApp();
   const params = useLocalSearchParams<{ passageId?: string; audioUri?: string; durationMs?: string }>();
   const passage = getPassage(params.passageId);
   const durationMs = Number(params.durationMs) || 0;
@@ -62,16 +64,14 @@ export default function ReadingProcessingScreen() {
       mark("analyse", "running");
 
       const analysis = analyzeReading(passage.text, asr.transcript, durationMs, passage.language);
-      const id = uuid();
-      const createdAt = new Date().toISOString();
-      addReadingAttempt({
+      const id = newId();
+      try {
+        await saveNewReading({
         id,
         title: passage.title,
         kannadaTitle: passage.kannadaTitle,
         language: passage.language,
         level: passage.level,
-        date: "Today",
-        createdAt,
         accuracy: analysis.accuracy,
         wpm: analysis.wpm,
         wcpm: analysis.wcpm,
@@ -90,25 +90,34 @@ export default function ReadingProcessingScreen() {
         asrConfidence: asr.confidence,
         asrModelVersion: asr.modelVersion,
         aiStatus: "pending",
-        synced: false,
-      });
+        });
+      } catch (e) {
+        console.warn("saving attempt failed", e);
+        mark("analyse", "failed");
+        setFatal(
+          lang === "en"
+            ? "Couldn't save this attempt on the phone. Check free storage space and try again."
+            : "ಈ ಪ್ರಯತ್ನವನ್ನು ಉಳಿಸಲಾಗಲಿಲ್ಲ. ಫೋನ್‌ನ ಸಂಗ್ರಹ ಸ್ಥಳ ಪರಿಶೀಲಿಸಿ."
+        );
+        return;
+      }
       mark("analyse", "done");
       mark("feedback", "running");
 
       try {
         const feedback = await requestReadingFeedback(analysis, passage.language);
-        updateReadingAttempt(id, { feedback, aiStatus: "completed" });
+        await updateReadingAttempt(id, { feedback, aiStatus: "completed" });
         mark("feedback", "done");
       } catch (e) {
         // Metrics are already saved; feedback is retried later.
         console.warn("AI feedback failed", e);
-        updateReadingAttempt(id, { aiStatus: "failed" });
+        await updateReadingAttempt(id, { aiStatus: "failed" });
         mark("feedback", "failed");
       }
 
       router.replace({ pathname: "/reading/result", params: { id } });
     })();
-  }, [attempt, passage, audioUri, durationMs, lang, addReadingAttempt, updateReadingAttempt, router]);
+  }, [attempt, passage, audioUri, durationMs, lang, saveNewReading, updateReadingAttempt, router]);
 
   if (!passage) return <Redirect href="/reading/language" />;
 
@@ -132,7 +141,7 @@ export default function ReadingProcessingScreen() {
       title={lang === "en" ? "Checking Your Reading" : "ನಿಮ್ಮ ಓದನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ"}
       subtitle={lang === "en" ? passage.title : passage.kannadaTitle}
       hideBack={!fatal}
-      onBack={() => router.replace("/home")}
+      onBack={() => goHome()}
       footer={
         fatal ? (
           <FlowButton

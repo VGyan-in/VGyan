@@ -27,10 +27,9 @@ export async function transcribe(req: AsrRequest): Promise<AsrResult> {
 
   const words = tokenize(req.referenceText);
   const rand = seededRandom(hash(`${req.audioUri ?? ""}:${req.durationMs}`));
-  // Students who read for a very short time likely stopped early.
-  const expectedMs = (words.length / (req.language === "Kannada" ? 60 : 85)) * 60000;
-  const readFraction = Math.min(1, Math.max(0.35, req.durationMs / (expectedMs * 0.6)));
-  const lastIndex = Math.ceil(words.length * readFraction);
+  // Simulate a realistic reading rate, so a short recording covers only part of the passage.
+  const wordsPerMinute = (req.language === "Kannada" ? 55 : 80) * (0.85 + rand() * 0.3);
+  const lastIndex = Math.min(words.length, Math.round((req.durationMs / 60000) * wordsPerMinute));
 
   const spoken: string[] = [];
   for (let i = 0; i < lastIndex; i++) {

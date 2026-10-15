@@ -205,7 +205,6 @@ export default function ReadingRecordingScreen() {
           label={lang === "en" ? "I'm Done" : "ಮುಗಿಯಿತು"}
           icon="check"
           onPress={stop}
-          style={{ flex: 0 }}
         />
       ) : null}
     </FlowScreen>

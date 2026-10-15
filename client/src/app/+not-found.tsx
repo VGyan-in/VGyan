@@ -1,23 +1,23 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
 import { C, FlowButton, FlowScreen } from "@/components/flow-ui";
+import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
 
 export default function NotFoundScreen() {
-  const router = useRouter();
+  const goHome = useGoHome();
   const { lang } = useApp();
 
   return (
     <FlowScreen
       title={lang === "en" ? "Page not found" : "ಪುಟ ಸಿಗಲಿಲ್ಲ"}
-      onBack={() => router.replace("/home")}
+      onBack={() => goHome()}
       footer={
         <FlowButton
           label={lang === "en" ? "Go Home" : "ಮುಖಪುಟಕ್ಕೆ ಹೋಗಿ"}
           icon="home"
-          onPress={() => router.replace("/home")}
+          onPress={() => goHome()}
         />
       }
     >

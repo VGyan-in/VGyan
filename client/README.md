@@ -1,56 +1,59 @@
-# Welcome to your Expo app 👋
+# VGyan student app (client)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo + Expo Router app for the bilingual (English / Kannada) reading and writing assessment pilot. For the project overview, see the [root README](../README.md).
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run it
 
 ```bash
-npm run reset-project
+npm install
+cp .env.example .env     # optional; defaults work without a server
+npm run web              # quickest: opens in the browser
+npm start                # then scan the QR code with Expo Go on Android
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Expo Go is enough for everything in this build. Real on-device speech recognition (Vosk) will need a development build (`npx expo run:android`).
 
-### Other setup steps
+## Check it
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm run typecheck
+npm run lint
+npm test                 # Jest: reading analyzer, writing metrics, sync queue, backoff
+```
 
-## Learn more
+## How it works
 
-To learn more about developing your project with Expo, look at the following resources:
+| Area | Where | Notes |
+|---|---|---|
+| Screens | `src/app/` | Expo Router routes. `reading/` and `writing/` are the assessment flows. |
+| App state | `src/state/app-store.tsx` | Signed-in student, consent, attempts, sync. Writes to storage first, then updates the UI. |
+| Storage | `src/core/db/` | SQLite on Android/iOS (`repository.ts`), localStorage on web (`repository.web.ts`, for dev only). Schema migrations use `PRAGMA user_version`. |
+| Media files | `src/core/storage/files.ts` | Recordings and photos are copied to `{documents}/{recordings or images}/{participantId}/{sessionId}/{attemptId}.*`. Paths use participant IDs, never names. |
+| Sync | `src/core/sync/` | Outbox queue: `pending → uploading → synced` or `failed`. Exponential backoff (30 s base, 1 h cap). 4xx errors are permanent; network and 5xx errors retry. Runs on reconnect, app foreground, every 3 min, and on "Upload now". Auto-sync uses Wi-Fi only. |
+| Reading analysis | `src/features/reading/analyzer.ts` | Word alignment (correct, substitution, omission, insertion), accuracy, WPM/WCPM, pace, and practice words. Pure TypeScript, unit-tested. |
+| Writing metrics | `src/features/writing/metrics.ts` | Word and sentence counts (the danda counts as a sentence end), vocabulary ratio. |
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Accounts on shared phones
 
-## Join the community
+Several students can use one phone. Each student registers once, gets a participant ID, and signs in with it (or their email) and a password. The password is stored only as a salted hash on the phone. Signing out keeps a student's saved work.
 
-Join our community of developers creating universal apps.
+### Consent
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Assessments are locked until consent matching `EXPO_PUBLIC_CONSENT_VERSION` is recorded. Raising the version asks everyone again. Consent can be withdrawn from Profile, and a student's data can be deleted from the phone there too. Both actions are synced as consent records.
+
+## Stand-ins until the backend and models exist
+
+Each stand-in is a single function, so the screens won't change when the real one is connected.
+
+| Stand-in | File | Replace with |
+|---|---|---|
+| Speech recognition | `src/features/reading/asr.ts` | Vosk (`react-native-vosk`) with the TDNN models |
+| Handwriting OCR | `src/features/writing/ocr.ts` | `POST /ocr` |
+| Reading feedback and writing scores | `src/features/feedback/ai.ts` | `POST /ai/reading-feedback`, `POST /ai/writing-assessment` |
+| Register and sign in | `register` and `login` in `src/state/app-store.tsx` | `POST /student/register`, `POST /student/login` (JWT is already stored in `expo-secure-store`) |
+
+With no `EXPO_PUBLIC_API_BASE_URL` set, uploads wait in the queue and nothing is lost. Once the URL is set, the uploader sends multipart `record` (JSON) and `file` fields to `/sync/reading`, `/sync/writing` and `/sync/consent`. The backend must upsert on the record ID; 2xx and 409 both count as received.
+
+## Configuration
+
+See `.env.example`. Only `EXPO_PUBLIC_*` values reach the app; never put secrets there.

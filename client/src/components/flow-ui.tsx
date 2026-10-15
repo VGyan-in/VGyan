@@ -14,6 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AppIcon, IconName } from "@/components/ui/app-icon";
 import { useApp } from "@/state/app-store";
+import { useGoHome } from "@/hooks/use-go-home";
+import { BottomNavBar, TabKey } from "@/components/bottom-nav-bar";
 
 export const C = {
   forest: "#0B3D2E",
@@ -54,12 +56,13 @@ export function FlowScreen({
   children,
 }: FlowScreenProps) {
   const router = useRouter();
+  const goHome = useGoHome();
   const { lang, toggleLang } = useApp();
 
   const handleBack = () => {
     if (onBack) return onBack();
     if (router.canGoBack()) router.back();
-    else router.replace("/home");
+    else goHome();
   };
 
   return (
@@ -78,9 +81,7 @@ export function FlowScreen({
               >
                 <AppIcon name="arrow-back" size={18} color={C.forest} />
               </TouchableOpacity>
-            ) : (
-              <View style={styles.backPlaceholder} />
-            )}
+            ) : null}
             <View style={styles.titleBlock}>
               <Text style={styles.headerTitle} numberOfLines={1}>
                 {title}
@@ -124,6 +125,51 @@ export function FlowScreen({
           )}
 
           {footer ? <View style={styles.footer}>{footer}</View> : null}
+        </SafeAreaView>
+      </View>
+    </View>
+  );
+}
+
+/** Shell for the three main tabs: title + language pill, scrolling body, bottom navigation. */
+export function TabScreen({
+  title,
+  subtitle,
+  activeTab,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  activeTab: TabKey;
+  children: React.ReactNode;
+}) {
+  const { lang, toggleLang, pendingCount } = useApp();
+  return (
+    <View style={styles.container}>
+      <View style={styles.screenWrapper}>
+        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+          <View style={[styles.topBar, styles.tabTopBar]}>
+            <View style={styles.titleBlock}>
+              <Text style={styles.tabTitle}>{title}</Text>
+              {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={toggleLang}
+              style={styles.langPill}
+              accessibilityRole="button"
+              accessibilityLabel="Switch language"
+            >
+              <AppIcon name="globe" size={13} color={C.forest} />
+              <Text style={styles.langPillText}>{lang === "en" ? "ಕನ್ನಡ" : "EN"}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {children}
+          </ScrollView>
+        </SafeAreaView>
+        <SafeAreaView edges={["bottom"]} style={{ backgroundColor: C.white }}>
+          <BottomNavBar activeTab={activeTab} syncBadgeCount={pendingCount} />
         </SafeAreaView>
       </View>
     </View>
@@ -175,6 +221,25 @@ export function FlowButton({
         </>
       )}
     </TouchableOpacity>
+  );
+}
+
+/** Buttons side by side with equal widths. */
+export function ButtonRow({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.buttonRow, style]}>
+      {React.Children.toArray(children).map((child, i) => (
+        <View key={i} style={styles.buttonCell}>
+          {child}
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -333,9 +398,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...Platform.select({ web: { cursor: "pointer" } }),
   },
-  backPlaceholder: { width: 36, height: 36 },
   titleBlock: { flex: 1 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: C.forest },
+  tabTopBar: { paddingHorizontal: 20, paddingVertical: 12 },
+  tabTitle: { fontSize: 20, fontWeight: "800", color: C.forest },
   headerSubtitle: { fontSize: 11.5, color: C.muted, marginTop: 1 },
   langPill: {
     flexDirection: "row",
@@ -363,7 +429,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.cream,
   },
   btn: {
-    flex: 1,
+    alignSelf: "stretch",
     height: 46,
     borderRadius: 23,
     backgroundColor: C.forest,
@@ -374,6 +440,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     ...Platform.select({ web: { cursor: "pointer" } }),
   },
+  buttonRow: { flexDirection: "row", gap: 10 },
+  buttonCell: { flex: 1 },
   btnSecondary: { backgroundColor: C.white, borderWidth: 1, borderColor: "#CFE0D7" },
   btnDanger: { backgroundColor: C.red },
   btnDisabled: { opacity: 0.45 },

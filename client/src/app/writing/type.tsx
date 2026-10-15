@@ -12,6 +12,8 @@ export default function WritingTypeScreen() {
   const router = useRouter();
   const { lang, writingDraft } = useApp();
   const submit = useSubmitWriting();
+  const [submitting, setSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [text, setText] = useState(writingDraft?.text ?? "");
   const [showShortWarning, setShowShortWarning] = useState(false);
   const prompt = getWritingPrompt(writingDraft?.promptId);
@@ -20,13 +22,23 @@ export default function WritingTypeScreen() {
 
   const words = countWords(text);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (submitting) return;
     if (words < prompt.minWords && !showShortWarning) {
       setShowShortWarning(true);
       return;
     }
-    const id = submit({ ...writingDraft, inputMethod: "typed", text });
-    if (id) router.replace({ pathname: "/writing/result", params: { id } });
+    setSubmitting(true);
+    setSaveError(false);
+    try {
+      const id = await submit({ ...writingDraft, inputMethod: "typed", text });
+      if (id) router.replace({ pathname: "/writing/result", params: { id } });
+    } catch (e) {
+      console.warn("saving writing failed", e);
+      setSaveError(true);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -44,6 +56,7 @@ export default function WritingTypeScreen() {
                 : lang === "en" ? "Submit for Assessment" : "ಮೌಲ್ಯಮಾಪನಕ್ಕೆ ಸಲ್ಲಿಸಿ"
             }
             icon="check"
+            loading={submitting}
             disabled={words === 0}
             onPress={handleSubmit}
           />
@@ -60,6 +73,17 @@ export default function WritingTypeScreen() {
               lang === "en"
                 ? `Your answer has ${words} words. Try to reach ${prompt.minWords} for a better score, or submit anyway.`
                 : `ನಿಮ್ಮ ಉತ್ತರದಲ್ಲಿ ${words} ಪದಗಳಿವೆ. ${prompt.minWords} ಪದಗಳನ್ನು ತಲುಪಲು ಪ್ರಯತ್ನಿಸಿ.`
+            }
+          />
+        ) : null}
+
+        {saveError ? (
+          <Notice
+            tone="error"
+            text={
+              lang === "en"
+                ? "Couldn't save your answer on this phone. Check free storage space and try again."
+                : "ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಉಳಿಸಲಾಗಲಿಲ್ಲ. ಸಂಗ್ರಹ ಸ್ಥಳ ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
             }
           />
         ) : null}

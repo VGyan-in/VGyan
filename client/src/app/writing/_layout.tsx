@@ -4,9 +4,10 @@ import { Platform } from "react-native";
 import { useApp } from "@/state/app-store";
 
 export default function WritingLayout() {
-  const { hasActiveConsent } = useApp();
+  const { isAuthenticated, hasActiveConsent } = useApp();
 
-  // Consent gate: assessments are unreachable without an active consent record.
+  // Assessments need a signed-in student with an active consent record.
+  if (!isAuthenticated) return <Redirect href="/" />;
   if (!hasActiveConsent) return <Redirect href="/consent" />;
 
   return (

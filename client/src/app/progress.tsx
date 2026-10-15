@@ -14,7 +14,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { BottomNavBar } from "@/components/bottom-nav-bar";
 import { tokenize } from "@/features/reading/analyzer";
 import { useApp } from "@/state/app-store";
-import { attemptDate } from "@/utils/format";
+import { attemptDate, shortDate } from "@/utils/format";
 
 type Timeframe = "week" | "month" | "all";
 
@@ -30,11 +30,10 @@ export default function ProgressScreen() {
 
   const [now] = useState(() => Date.now());
 
-  // Seed attempts have no timestamp; they are treated as recent so the demo history stays visible.
   const { reading, writing } = useMemo(() => {
     const days = TIMEFRAME_DAYS[timeframe];
-    const inRange = (a: { createdAt?: string }) =>
-      days == null || !a.createdAt || now - new Date(a.createdAt).getTime() <= days * 86400000;
+    const inRange = (a: { createdAt: string }) =>
+      days == null || now - new Date(a.createdAt).getTime() <= days * 86400000;
     return {
       reading: readingAttempts.filter(inRange),
       writing: writingAttempts
@@ -88,7 +87,11 @@ export default function ProgressScreen() {
     spelling: avg(writing.map((a) => a.spellingScore)),
     grammar: avg(writing.map((a) => a.grammarScore)),
     vocabulary: avg(writing.map((a) => a.vocabularyScore)),
-    ocr: avg(writing.filter((a) => a.inputMethod !== "typed" && a.ocrAccuracy > 0).map((a) => a.ocrAccuracy)),
+    ocr: avg(
+      writing
+        .filter((a) => a.inputMethod !== "typed" && a.ocrConfidence != null)
+        .map((a) => Math.round((a.ocrConfidence ?? 0) * 100))
+    ),
   };
   const latestWriting = writing[0];
   const latestTip = latestWriting?.assessment?.improvements[0];
@@ -116,10 +119,10 @@ export default function ProgressScreen() {
           <View style={styles.topBar}>
             <View>
               <Text style={styles.headerTitle}>
-                {lang === "en" ? "Learning Analytics" : "ಕಲಿಕೆಯ ವಿಶ್ಲೇಷಣೆ"}
+                {lang === "en" ? "My Progress" : "ನನ್ನ ಪ್ರಗತಿ"}
               </Text>
               <Text style={styles.headerSubtitle}>
-                {lang === "en" ? "Phase 2 • Performance" : "ಹಂತ 2 • ಪ್ರಗತಿ"}
+                {lang === "en" ? "How you are improving" : "ನಿಮ್ಮ ಪ್ರಗತಿ"}
               </Text>
             </View>
 
@@ -174,7 +177,9 @@ export default function ProgressScreen() {
               <View style={styles.kpiCard}>
                 <View style={styles.kpiTopRow}>
                   <AppIcon name="chart" size={15} color="#0B3D2E" />
-                  <Text style={styles.kpiBadge}>{reading.length} {lang === "en" ? "reads" : "ಓದು"}</Text>
+                  <Text style={styles.kpiBadge}>
+                    {reading.length} {lang === "en" ? (reading.length === 1 ? "reading" : "readings") : "ಓದು"}
+                  </Text>
                 </View>
                 <Text style={styles.kpiValue}>{avgAccuracy == null ? "–" : `${fmt(avgAccuracy, 1)}%`}</Text>
                 <Text style={styles.kpiLabel}>
@@ -196,7 +201,9 @@ export default function ProgressScreen() {
               <View style={styles.kpiCard}>
                 <View style={styles.kpiTopRow}>
                   <AppIcon name="pencil" size={15} color="#0B3D2E" />
-                  <Text style={styles.kpiBadge}>{writing.length} {lang === "en" ? "essays" : "ಬರಹ"}</Text>
+                  <Text style={styles.kpiBadge}>
+                    {writing.length} {lang === "en" ? (writing.length === 1 ? "answer" : "answers") : "ಬರಹ"}
+                  </Text>
                 </View>
                 <Text style={styles.kpiValue}>{avgWriting == null ? "–" : `${fmt(avgWriting, 1)} / 10`}</Text>
                 <Text style={styles.kpiLabel}>
@@ -239,7 +246,7 @@ export default function ProgressScreen() {
                     activeTab === "reading" && styles.domainOptionTextActive,
                   ]}
                 >
-                  {lang === "en" ? "Reading Fluency" : "ಓದುವ ನಿರರ್ಗಳತೆ"}
+                  {lang === "en" ? "Reading" : "ಓದು"}
                 </Text>
               </TouchableOpacity>
 
@@ -262,7 +269,7 @@ export default function ProgressScreen() {
                     activeTab === "writing" && styles.domainOptionTextActive,
                   ]}
                 >
-                  {lang === "en" ? "Writing & OCR" : "ಬರವಣಿಗೆ ಮತ್ತು OCR"}
+                  {lang === "en" ? "Writing" : "ಬರವಣಿಗೆ"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -274,9 +281,9 @@ export default function ProgressScreen() {
                 <View style={styles.chartCard}>
                   <View style={styles.chartHeader}>
                     <Text style={styles.cardHeaderTitle}>
-                      {lang === "en" ? "Reading Accuracy Trend" : "ಓದುವ ನಿಖರತೆಯ ಪ್ರವೃತ್ತಿ"}
+                      {lang === "en" ? "Recent Readings" : "ಇತ್ತೀಚಿನ ಓದುಗಳು"}
                     </Text>
-                    <Text style={styles.chartTarget}>Target 85%+</Text>
+                    <Text style={styles.chartTarget}>{lang === "en" ? "Goal 85%+" : "ಗುರಿ 85%+"}</Text>
                   </View>
 
                   {trend.length === 0 ? (
@@ -302,7 +309,7 @@ export default function ProgressScreen() {
                             />
                           </View>
                           <Text style={styles.barDayLabel} numberOfLines={1}>
-                            {attemptDate(item).replace("Today, ", "").replace("Yesterday", "Yday")}
+                            {shortDate(item.createdAt, lang)}
                           </Text>
                           <Text style={styles.barWpmLabel}>{item.wpm}w</Text>
                         </TouchableOpacity>
@@ -344,9 +351,7 @@ export default function ProgressScreen() {
                 {/* Word Alignment Error Breakdown */}
                 <View style={styles.chartCard}>
                   <Text style={styles.cardHeaderTitle}>
-                    {lang === "en"
-                      ? "ASR Word Alignment"
-                      : "ಧ್ವನಿ ಮಾದರಿಯ ಪದ ಹೊಂದಾಣಿಕೆ"}
+                    {lang === "en" ? "Word Check" : "ಪದ ಪರಿಶೀಲನೆ"}
                   </Text>
                   <Text style={styles.cardSubtitle}>
                     {lang === "en"
@@ -364,19 +369,19 @@ export default function ProgressScreen() {
                     <View style={styles.alignGrid}>
                       <View style={styles.alignItem}>
                         <Text style={[styles.alignNum, { color: "#0B3D2E" }]}>{correctPct}%</Text>
-                        <Text style={styles.alignLabel}>Correct</Text>
+                        <Text style={styles.alignLabel}>{lang === "en" ? "Correct" : "ಸರಿ"}</Text>
                       </View>
                       <View style={styles.alignItem}>
                         <Text style={[styles.alignNum, { color: "#D97706" }]}>{pct(subs)}%</Text>
-                        <Text style={styles.alignLabel}>Substitution</Text>
+                        <Text style={styles.alignLabel}>{lang === "en" ? "Changed" : "ಬದಲಾದ"}</Text>
                       </View>
                       <View style={styles.alignItem}>
                         <Text style={[styles.alignNum, { color: "#DC2626" }]}>{pct(oms)}%</Text>
-                        <Text style={styles.alignLabel}>Omission</Text>
+                        <Text style={styles.alignLabel}>{lang === "en" ? "Skipped" : "ಬಿಟ್ಟ"}</Text>
                       </View>
                       <View style={styles.alignItem}>
                         <Text style={[styles.alignNum, { color: "#2563EB" }]}>{pct(ins)}%</Text>
-                        <Text style={styles.alignLabel}>Insertion</Text>
+                        <Text style={styles.alignLabel}>{lang === "en" ? "Extra" : "ಹೆಚ್ಚುವರಿ"}</Text>
                       </View>
                     </View>
                   )}
@@ -436,7 +441,7 @@ export default function ProgressScreen() {
               <View style={styles.tabContentWrap}>
                 <View style={styles.chartCard}>
                   <Text style={styles.cardHeaderTitle}>
-                    {lang === "en" ? "Rubric Evaluation" : "ಬರವಣಿಗೆ ಮೌಲ್ಯಮಾಪನ"}
+                    {lang === "en" ? "Writing Skills" : "ಬರವಣಿಗೆ ಕೌಶಲ"}
                   </Text>
                   <Text style={styles.cardSubtitle}>
                     {lang === "en"
@@ -451,10 +456,10 @@ export default function ProgressScreen() {
                   ) : (
                     <View style={styles.rubricWrap}>
                       {[
-                        { label: "Spelling & Orthography", value: avgRubric.spelling },
-                        { label: "Grammar & Sentence Syntax", value: avgRubric.grammar },
-                        { label: "Vocabulary Diversity", value: avgRubric.vocabulary },
-                        { label: "OCR Handwriting Legibility", value: avgRubric.ocr },
+                        { label: lang === "en" ? "Spelling" : "ಕಾಗುಣಿತ", value: avgRubric.spelling },
+                        { label: lang === "en" ? "Grammar & sentences" : "ವ್ಯಾಕರಣ ಮತ್ತು ವಾಕ್ಯಗಳು", value: avgRubric.grammar },
+                        { label: lang === "en" ? "Vocabulary" : "ಶಬ್ದಕೋಶ", value: avgRubric.vocabulary },
+                        { label: lang === "en" ? "Handwriting clarity" : "ಕೈಬರಹದ ಸ್ಪಷ್ಟತೆ", value: avgRubric.ocr },
                       ]
                         .filter((r) => r.value != null)
                         .map((r) => (
@@ -489,7 +494,7 @@ export default function ProgressScreen() {
                     </View>
 
                     <Text style={styles.feedbackQuote}>
-                      &quot;{latestWriting.aiFeedback}&quot;
+                      &quot;{latestWriting.assessment?.summary ?? ""}&quot;
                     </Text>
 
                     {latestTip ? (

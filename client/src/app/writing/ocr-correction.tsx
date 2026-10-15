@@ -13,6 +13,8 @@ export default function OcrCorrectionScreen() {
   const router = useRouter();
   const { lang, writingDraft } = useApp();
   const submit = useSubmitWriting();
+  const [submitting, setSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [text, setText] = useState(writingDraft?.text ?? "");
   const [showImage, setShowImage] = useState(false);
   const prompt = getWritingPrompt(writingDraft?.promptId);
@@ -24,10 +26,20 @@ export default function OcrCorrectionScreen() {
   const edited = text !== writingDraft.originalOcr;
   const confidence = writingDraft.ocrConfidence != null ? Math.round(writingDraft.ocrConfidence * 100) : null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (submitting) return;
     // originalOcr stays untouched in the draft; `text` is the student's correction.
-    const id = submit({ ...writingDraft, text });
-    if (id) router.replace({ pathname: "/writing/result", params: { id } });
+    setSubmitting(true);
+    setSaveError(false);
+    try {
+      const id = await submit({ ...writingDraft, text });
+      if (id) router.replace({ pathname: "/writing/result", params: { id } });
+    } catch (e) {
+      console.warn("saving writing failed", e);
+      setSaveError(true);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -41,6 +53,7 @@ export default function OcrCorrectionScreen() {
           <FlowButton
             label={lang === "en" ? "Submit for Assessment" : "ಮೌಲ್ಯಮಾಪನಕ್ಕೆ ಸಲ್ಲಿಸಿ"}
             icon="check"
+            loading={submitting}
             disabled={text.trim().length === 0}
             onPress={handleSubmit}
           />
@@ -74,6 +87,17 @@ export default function OcrCorrectionScreen() {
               <Image source={{ uri: writingDraft.imageUri }} style={styles.image} contentFit="contain" />
             ) : null}
           </Card>
+        ) : null}
+
+        {saveError ? (
+          <Notice
+            tone="error"
+            text={
+              lang === "en"
+                ? "Couldn't save your answer on this phone. Check free storage space and try again."
+                : "ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಉಳಿಸಲಾಗಲಿಲ್ಲ. ಸಂಗ್ರಹ ಸ್ಥಳ ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+            }
+          />
         ) : null}
 
         <WritingEditor

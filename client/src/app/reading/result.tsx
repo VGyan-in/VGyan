@@ -4,6 +4,7 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { AppIcon } from "@/components/ui/app-icon";
 import {
+  ButtonRow,
   C,
   Card,
   FlowButton,
@@ -16,11 +17,13 @@ import {
 import { languageLabel, levelLabel } from "@/constants/content";
 import type { AlignedWord } from "@/features/reading/analyzer";
 import { requestReadingFeedback } from "@/features/feedback/ai";
+import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
 import { attemptDate } from "@/utils/format";
 
 export default function ReadingResultScreen() {
   const router = useRouter();
+  const goHome = useGoHome();
   const { lang, readingAttempts, updateReadingAttempt } = useApp();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const attempt = readingAttempts.find((a) => a.id === id);
@@ -75,9 +78,9 @@ export default function ReadingResultScreen() {
     <FlowScreen
       title={lang === "en" ? "Reading Result" : "ಓದುವ ಫಲಿತಾಂಶ"}
       subtitle={`${lang === "en" ? attempt.title : attempt.kannadaTitle} • ${attemptDate(attempt)}`}
-      onBack={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
+      onBack={() => (router.canGoBack() ? router.back() : goHome())}
       footer={
-        <View style={flowStyles.footerRow}>
+        <ButtonRow>
           <FlowButton
             variant="secondary"
             label={lang === "en" ? "Read Again" : "ಮತ್ತೆ ಓದಿ"}
@@ -91,9 +94,9 @@ export default function ReadingResultScreen() {
           <FlowButton
             label={lang === "en" ? "Done" : "ಮುಗಿಯಿತು"}
             icon="check"
-            onPress={() => router.replace("/home")}
+            onPress={() => goHome()}
           />
-        </View>
+        </ButtonRow>
       }
     >
       <Card style={styles.heroCard}>
@@ -168,12 +171,6 @@ export default function ReadingResultScreen() {
               <Bullet key={`i${i}`} icon="sparkles" color={C.amber} text={s} />
             ))}
           </>
-        ) : attempt.aiStatus === "synced" ? (
-          <Text style={flowStyles.bodyText}>
-            {lang === "en"
-              ? "Detailed feedback for this attempt is available to your teacher."
-              : "ಈ ಪ್ರಯತ್ನದ ವಿವರವಾದ ಪ್ರತಿಕ್ರಿಯೆ ನಿಮ್ಮ ಶಿಕ್ಷಕರಿಗೆ ಲಭ್ಯವಿದೆ."}
-          </Text>
         ) : (
           <>
             <Notice
@@ -190,7 +187,6 @@ export default function ReadingResultScreen() {
               icon="refresh"
               loading={retrying}
               onPress={retryFeedback}
-              style={{ flex: 0 }}
             />
           </>
         )}
@@ -235,12 +231,41 @@ function Bullet({ icon, color, text }: { icon: "check" | "sparkles"; color: stri
 }
 
 /** Passage rendered word by word, coloured by alignment status. */
+/**
+ * Index where the student stopped reading: start of the trailing run of omissions.
+ * A run shorter than 3 words is treated as ordinary skips.
+ */
+function notReachedFrom(words: AlignedWord[]): number {
+  let i = words.length;
+  while (i > 0 && words[i - 1].status === "omission") i--;
+  return words.length - i >= 3 && i > 0 ? i : words.length;
+}
+
 function WordDiff({ words, lang }: { words: AlignedWord[]; lang: "en" | "kn" }) {
+  const stopAt = notReachedFrom(words);
+  const stoppedEarly = stopAt < words.length;
   return (
     <View>
+      {stoppedEarly ? (
+        <Notice
+          tone="warn"
+          text={
+            lang === "en"
+              ? `You stopped before the end. The ${words.length - stopAt} grey words weren't read, so they count as skipped. Try reading the whole passage next time!`
+              : `ನೀವು ಕೊನೆಯವರೆಗೂ ಓದಲಿಲ್ಲ. ಓದದ ${words.length - stopAt} ಬೂದು ಪದಗಳನ್ನು ಬಿಟ್ಟವು ಎಂದು ಎಣಿಸಲಾಗಿದೆ.`
+          }
+        />
+      ) : null}
       <Text style={styles.diffText}>
         {words.map((w, i) => {
           const sep = i === 0 ? "" : " ";
+          if (i >= stopAt)
+            return (
+              <Text key={i} style={styles.diffNotReached}>
+                {sep}
+                {w.ref}
+              </Text>
+            );
           if (w.status === "correct") return <Text key={i}>{sep}{w.ref}</Text>;
           if (w.status === "omission")
             return (
@@ -290,6 +315,7 @@ const styles = StyleSheet.create({
   diffSubstitution: { color: C.amber, backgroundColor: "#FEF3C7" },
   diffOmission: { color: C.red, backgroundColor: "#FDECEC", textDecorationLine: "line-through" },
   diffInsertion: { color: C.blue, backgroundColor: "#E8EFFD", fontStyle: "italic" },
+  diffNotReached: { color: "#A3B8AE" },
   diffSaid: { fontSize: 12, color: C.amber },
   playRow: {
     flexDirection: "row",

@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
 import {
+  ButtonRow,
   C,
   Card,
   FlowButton,
@@ -17,11 +18,13 @@ import {
 import { getWritingPrompt, languageLabel } from "@/constants/content";
 import { requestWritingAssessment } from "@/features/feedback/ai";
 import { computeWritingMetrics } from "@/features/writing/metrics";
+import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
 import { attemptDate } from "@/utils/format";
 
 export default function WritingResultScreen() {
   const router = useRouter();
+  const goHome = useGoHome();
   const { lang, writingAttempts, updateWritingAttempt } = useApp();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const attempt = writingAttempts.find((a) => a.id === id);
@@ -49,7 +52,6 @@ export default function WritingResultScreen() {
         grammarScore: a.grammarScore,
         vocabularyScore: a.vocabularyScore,
         spellingScore: a.spellingScore,
-        aiFeedback: a.summary,
       });
     } catch {
       updateWritingAttempt(attempt.id, { aiStatus: "failed" });
@@ -64,17 +66,17 @@ export default function WritingResultScreen() {
     <FlowScreen
       title={lang === "en" ? "Writing Result" : "ಬರವಣಿಗೆ ಫಲಿತಾಂಶ"}
       subtitle={`${languageLabel(attempt.language, lang)} • ${attemptDate(attempt)}`}
-      onBack={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
+      onBack={() => (router.canGoBack() ? router.back() : goHome())}
       footer={
-        <View style={flowStyles.footerRow}>
+        <ButtonRow>
           <FlowButton
             variant="secondary"
             label={lang === "en" ? "Write Again" : "ಮತ್ತೆ ಬರೆಯಿರಿ"}
             icon="pencil"
             onPress={() => router.replace("/writing/prompt")}
           />
-          <FlowButton label={lang === "en" ? "Done" : "ಮುಗಿಯಿತು"} icon="check" onPress={() => router.replace("/home")} />
-        </View>
+          <FlowButton label={lang === "en" ? "Done" : "ಮುಗಿಯಿತು"} icon="check" onPress={() => goHome()} />
+        </ButtonRow>
       }
     >
       <Card style={styles.heroCard}>
@@ -115,7 +117,7 @@ export default function WritingResultScreen() {
             icon="refresh"
             loading={retrying}
             onPress={retry}
-            style={{ flex: 0, marginBottom: 12 }}
+            style={{ marginBottom: 12 }}
           />
         </>
       ) : null}
@@ -158,7 +160,9 @@ export default function WritingResultScreen() {
               ))}
             </>
           ) : (
-            <Text style={flowStyles.bodyText}>{attempt.aiFeedback}</Text>
+            <Text style={flowStyles.bodyText}>
+              {lang === "en" ? "No feedback recorded for this attempt." : "ಈ ಪ್ರಯತ್ನಕ್ಕೆ ಪ್ರತಿಕ್ರಿಯೆ ಇಲ್ಲ."}
+            </Text>
           )}
         </Card>
       ) : null}

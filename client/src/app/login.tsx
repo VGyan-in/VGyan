@@ -1,434 +1,132 @@
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
+import { C, FlowButton, FlowScreen, Notice } from "@/components/flow-ui";
+import { Field } from "@/components/form-ui";
 import { useApp } from "@/state/app-store";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, hasActiveConsent } = useApp();
+  const { lang, login } = useApp();
+  const en = lang === "en";
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
+  const canSubmit = identifier.trim().length > 0 && password.length > 0;
+
+  const handleLogin = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError(null);
+    const res = await login(identifier, password);
+    setBusy(false);
+    if (res.ok) {
+      // The landing route decides where a signed-in student goes next.
       router.replace("/");
+      return;
     }
-  };
-
-  const handleLogin = () => {
-    // STUB: replace with POST /student/login (JWT to secure storage) once the backend is up.
-    login(identifier);
-    router.replace(hasActiveConsent ? "/home" : "/consent");
+    setError(
+      res.error === "not-found"
+        ? en
+          ? "No account with that ID or email on this phone. Check it, or create an account."
+          : "ಈ ಫೋನ್‌ನಲ್ಲಿ ಆ ಐಡಿ ಅಥವಾ ಇಮೇಲ್‌ನ ಖಾತೆ ಇಲ್ಲ. ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಹೊಸ ಖಾತೆ ತೆರೆಯಿರಿ."
+        : en
+        ? "That password doesn't match. Try again."
+        : "ಪಾಸ್‌ವರ್ಡ್ ಹೊಂದುತ್ತಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+    );
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.screenWrapper}>
-        <SafeAreaView style={styles.safeArea}>
-          {/* Top Bar with Exactly Positioned Back Button */}
-          <View style={styles.topBar}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <FlowScreen
+        title={en ? "Sign In" : "ಸೈನ್ ಇನ್"}
+        onBack={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+        footer={
+          <View>
+            <FlowButton
+              label={en ? "Sign In" : "ಸೈನ್ ಇನ್"}
+              icon="chevron-forward"
+              disabled={!canSubmit}
+              loading={busy}
+              onPress={handleLogin}
+            />
             <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={handleBack}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={styles.backButton}
+              onPress={() => router.replace("/register")}
+              style={styles.switchRow}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
             >
-              <Text style={styles.backButtonText}>←</Text>
+              <Text style={styles.switchText}>
+                {en ? "New here? " : "ಹೊಸಬರೇ? "}
+                <Text style={styles.switchLink}>{en ? "Create an account" : "ಖಾತೆ ತೆರೆಯಿರಿ"}</Text>
+              </Text>
             </TouchableOpacity>
-            <View style={{ flex: 1 }} />
           </View>
+        }
+      >
+        <View style={styles.header}>
+          <Image source={require("@/assets/images/vgyan_logo.png")} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.title}>{en ? "Welcome back" : "ಮರಳಿ ಸ್ವಾಗತ"}</Text>
+          <Text style={styles.subtitle}>
+            {en ? "Sign in with your participant ID or email." : "ನಿಮ್ಮ ಭಾಗವಹಿಸುವವರ ಐಡಿ ಅಥವಾ ಇಮೇಲ್ ಬಳಸಿ ಸೈನ್ ಇನ್ ಮಾಡಿ."}
+          </Text>
+        </View>
 
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.keyboardView}
-          >
-            <ScrollView
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {/* Header & VGyan Branding */}
-              <View style={styles.headerSection}>
-                <Image
-                  source={require("@/assets/images/vgyan_logo.png")}
-                  style={styles.logoImage}
-                  resizeMode="contain"
-                />
-                <Text style={styles.title}>Welcome Back</Text>
-                <Text style={styles.subtitle}>
-                  Sign in to continue your reading practice in Kannada & English
-                </Text>
-              </View>
+        {error ? <Notice tone="error" text={error} /> : null}
 
-              {/* Form Card */}
-              <View style={styles.formCard}>
-                {/* Identifier Field */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Email or Participant ID</Text>
-                  <View
-                    style={[
-                      styles.inputContainer,
-                      focusedInput === "identifier" && styles.inputFocused,
-                    ]}
-                  >
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter email or ID"
-                      placeholderTextColor="#8CA399"
-                      value={identifier}
-                      onChangeText={setIdentifier}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      onFocus={() => setFocusedInput("identifier")}
-                      onBlur={() => setFocusedInput(null)}
-                    />
-                  </View>
-                </View>
+        <Field
+          label={en ? "Participant ID or email" : "ಭಾಗವಹಿಸುವವರ ಐಡಿ ಅಥವಾ ಇಮೇಲ್"}
+          placeholder="VG-2026-123456"
+          value={identifier}
+          onChangeText={(t) => {
+            setIdentifier(t);
+            setError(null);
+          }}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          returnKeyType="next"
+        />
+        <Field
+          label={en ? "Password" : "ಪಾಸ್‌ವರ್ಡ್"}
+          placeholder={en ? "Your password" : "ನಿಮ್ಮ ಪಾಸ್‌ವರ್ಡ್"}
+          value={password}
+          onChangeText={(t) => {
+            setPassword(t);
+            setError(null);
+          }}
+          secure
+          autoCapitalize="none"
+          returnKeyType="go"
+          onSubmitEditing={handleLogin}
+        />
 
-                {/* Password Field */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Password</Text>
-                  <View
-                    style={[
-                      styles.inputContainer,
-                      focusedInput === "password" && styles.inputFocused,
-                    ]}
-                  >
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter your password"
-                      placeholderTextColor="#8CA399"
-                      secureTextEntry={!showPassword}
-                      value={password}
-                      onChangeText={setPassword}
-                      onFocus={() => setFocusedInput("password")}
-                      onBlur={() => setFocusedInput(null)}
-                    />
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => setShowPassword(!showPassword)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      style={styles.eyeButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-                    >
-                      <Text style={styles.eyeIcon}>{showPassword ? "👁️" : "👁️‍🗨️"}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Remember Me & Forgot Password Row */}
-                <View style={styles.optionsRow}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => setRememberMe(!rememberMe)}
-                    style={styles.rememberMeRow}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        rememberMe && styles.checkboxChecked,
-                      ]}
-                    >
-                      {rememberMe && <Text style={styles.checkmark}>✓</Text>}
-                    </View>
-                    <Text style={styles.rememberText}>Remember me</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => {}}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.forgotText}>Forgot Password?</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Sign In CTA Button */}
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={handleLogin}
-                  style={styles.loginButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Sign in"
-                >
-                  <Text style={styles.loginButtonText}>Sign In →</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Switch to Register */}
-              <View style={styles.footerSection}>
-                <Text style={styles.footerText}>Don&apos;t have an account? </Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => router.push("/register")}
-                >
-                  <Text style={styles.registerLink}>Sign Up</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </View>
-    </View>
+        <TouchableOpacity onPress={() => setShowForgot((v) => !v)} accessibilityRole="button">
+          <Text style={styles.forgot}>{en ? "Forgot your password?" : "ಪಾಸ್‌ವರ್ಡ್ ಮರೆತಿರಾ?"}</Text>
+        </TouchableOpacity>
+        {showForgot ? (
+          <Notice
+            text={
+              en
+                ? "Ask your teacher or the research team to reset it for you."
+                : "ಅದನ್ನು ಮರುಹೊಂದಿಸಲು ನಿಮ್ಮ ಶಿಕ್ಷಕರು ಅಥವಾ ಸಂಶೋಧನಾ ತಂಡವನ್ನು ಕೇಳಿ."
+            }
+          />
+        ) : null}
+      </FlowScreen>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#FAF6EF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenWrapper: {
-    width: "100%",
-    height: "100%",
-    maxWidth: 480,
-    backgroundColor: "#FAF6EF",
-  },
-  safeArea: {
-    flex: 1,
-  },
-  topBar: {
-    width: "100%",
-    height: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginTop: Platform.OS === "android" ? 12 : 6,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(11, 61, 46, 0.12)",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#0B3D2E",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-      web: {
-        boxShadow: "0 2px 6px rgba(11, 61, 46, 0.1)",
-        cursor: "pointer",
-      },
-    }),
-  },
-  backButtonText: {
-    fontSize: 20,
-    color: "#0B3D2E",
-    fontWeight: "700",
-    marginLeft: -1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerSection: {
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  logoImage: {
-    width: 95,
-    height: 70,
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#0B3D2E",
-    letterSpacing: -0.3,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 14.5,
-    color: "#4B6B60",
-    textAlign: "center",
-    lineHeight: 21,
-    paddingHorizontal: 16,
-  },
-  formCard: {
-    width: "100%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderWidth: 1,
-    borderColor: "#E4EDE7",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#0B3D2E",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.06,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 3,
-      },
-      web: {
-        boxShadow: "0 8px 24px rgba(11, 61, 46, 0.06)",
-      },
-    }),
-  },
-  fieldGroup: {
-    marginBottom: 18,
-  },
-  label: {
-    fontSize: 13.5,
-    fontWeight: "600",
-    color: "#164A3D",
-    marginBottom: 7,
-    letterSpacing: 0.1,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F8FAF8",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#D9E6DF",
-    paddingHorizontal: 14,
-    height: 50,
-  },
-  inputFocused: {
-    borderColor: "#0B3D2E",
-    backgroundColor: "#FFFFFF",
-  },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: "#0F2F24",
-    paddingVertical: 0,
-  },
-  eyeButton: {
-    padding: 6,
-    marginLeft: 6,
-  },
-  eyeIcon: {
-    fontSize: 16,
-    opacity: 0.7,
-  },
-  optionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 2,
-    marginBottom: 22,
-  },
-  rememberMeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: "#B7CDC3",
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxChecked: {
-    backgroundColor: "#0B3D2E",
-    borderColor: "#0B3D2E",
-  },
-  checkmark: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  rememberText: {
-    fontSize: 13.5,
-    color: "#4B6B60",
-    fontWeight: "500",
-  },
-  forgotText: {
-    fontSize: 13.5,
-    color: "#0B3D2E",
-    fontWeight: "600",
-  },
-  loginButton: {
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#0B3D2E",
-    alignItems: "center",
-    justifyContent: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#052219",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-      web: {
-        boxShadow: "0 4px 12px rgba(11, 61, 46, 0.25)",
-        cursor: "pointer",
-      },
-    }),
-  },
-  loginButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  footerSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 22,
-  },
-  footerText: {
-    fontSize: 14,
-    color: "#4B6B60",
-  },
-  registerLink: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0B3D2E",
-  },
+  header: { alignItems: "center", marginTop: 8, marginBottom: 22 },
+  logo: { width: 72, height: 72, marginBottom: 10 },
+  title: { fontSize: 24, fontWeight: "800", color: C.forest },
+  subtitle: { fontSize: 13.5, color: C.body, marginTop: 6, textAlign: "center", lineHeight: 19 },
+  forgot: { fontSize: 13, fontWeight: "700", color: C.forest, marginBottom: 12 },
+  switchRow: { alignItems: "center", paddingTop: 12 },
+  switchText: { fontSize: 13.5, color: C.body },
+  switchLink: { fontWeight: "800", color: C.forest, textDecorationLine: "underline" },
 });

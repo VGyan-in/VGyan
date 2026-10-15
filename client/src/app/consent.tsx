@@ -10,16 +10,19 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { Redirect, useRouter, useLocalSearchParams } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
+import { config } from "@/core/config";
+import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
 
 export default function ConsentGateScreen() {
   const router = useRouter();
+  const goHome = useGoHome();
   const params = useLocalSearchParams();
   const isViewOnly = params.viewOnly === "true";
 
-  const { lang, toggleLang, profile: initialStudentProfile, consent, acceptConsent } = useApp();
+  const { lang, toggleLang, profile: initialStudentProfile, consent, acceptConsent, logout } = useApp();
   const existing = consent?.status === "active" ? consent : null;
   const [signerRole, setSignerRole] = useState<"guardian" | "student">(
     existing?.signerType ?? "guardian"
@@ -38,8 +41,18 @@ export default function ConsentGateScreen() {
     consentAccuracy &&
     signerName.trim().length > 1;
 
-  const handleAcceptConsent = () => {
-    if (!isFormValid) {
+  const [saving, setSaving] = useState(false);
+
+  if (!initialStudentProfile) return <Redirect href="/" />;
+  const alreadyGiven = !!existing && existing.consentVersion === config.consentVersion;
+
+  const handleAcceptConsent = async () => {
+    if (alreadyGiven) {
+      if (router.canGoBack()) router.back();
+      else goHome();
+      return;
+    }
+    if (!isFormValid || saving) {
       const msg =
         lang === "en"
           ? "Please complete all checkboxes and enter your signature name to proceed."
@@ -52,9 +65,8 @@ export default function ConsentGateScreen() {
       return;
     }
 
-    acceptConsent({
-      consentVersion: "v1.0",
-      acceptedAt: new Date().toISOString(),
+    setSaving(true);
+    await acceptConsent({
       signerType: signerRole,
       signerName: signerName.trim(),
       signerRelation: relationship.trim(),
@@ -62,18 +74,20 @@ export default function ConsentGateScreen() {
       audioConsent: consentAudioWriting,
       handwritingConsent: consentAudioWriting,
       researchConsent: consentStudy,
-      status: "active",
     });
-    if (isViewOnly && router.canGoBack()) router.back();
-    else router.replace("/home");
+    setSaving(false);
+    // The landing route sends the student on to profile details or home.
+    router.replace("/");
+  };
+
+  const handleDecline = async () => {
+    await logout();
+    router.replace("/");
   };
 
   const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/login");
-    }
+    if (isViewOnly && router.canGoBack()) router.back();
+    else void handleDecline();
   };
 
   return (
@@ -98,7 +112,7 @@ export default function ConsentGateScreen() {
                 {lang === "en" ? "Research Consent" : "ಸಂಶೋಧನಾ ಸಮ್ಮತಿ"}
               </Text>
               <Text style={styles.navHeaderSub}>
-                {lang === "en" ? "Phase 1 • Gate" : "ಹಂತ 1 • ಪ್ರವೇಶ"}
+                {lang === "en" ? "Needed before assessments" : "ಮೌಲ್ಯಮಾಪನಕ್ಕೂ ಮೊದಲು ಅಗತ್ಯ"}
               </Text>
             </View>
 
@@ -124,9 +138,9 @@ export default function ConsentGateScreen() {
             <View style={styles.studyBanner}>
               <View style={styles.studyBadge}>
                 <AppIcon name="shield" size={12} color="#0B3D2E" />
-                <Text style={styles.studyBadgeText}>IIIT-Delhi Study</Text>
+                <Text style={styles.studyBadgeText}>{lang === "en" ? "Research Study" : "ಸಂಶೋಧನಾ ಅಧ್ಯಯನ"}</Text>
               </View>
-              <Text style={styles.versionTag}>Protocol v1.0</Text>
+              <Text style={styles.versionTag}>Consent v{config.consentVersion}</Text>
             </View>
 
             <Text style={styles.screenTitle}>
@@ -150,7 +164,8 @@ export default function ConsentGateScreen() {
                   {initialStudentProfile.participantId}
                 </Text>
                 <Text style={styles.idCardStudent}>
-                  {initialStudentProfile.name} • {initialStudentProfile.grade} ({initialStudentProfile.school})
+                  {initialStudentProfile.name}
+                  {initialStudentProfile.grade ? ` • ${lang === "en" ? "Class" : "ತರಗತಿ"} ${initialStudentProfile.grade}` : ""}
                 </Text>
               </View>
               <View style={styles.idLockIcon}>
@@ -309,12 +324,12 @@ export default function ConsentGateScreen() {
                 <View style={styles.disclosureTextBox}>
                   <Text style={styles.disclosureTitle}>
                     {lang === "en"
-                      ? "Anonymization & Zero Data Sale"
+                      ? "Your name stays private"
                       : "ಅನಾಮಧೇಯತೆ ಮತ್ತು ಗೌಪ್ಯತೆಯ ಭರವಸೆ"}
                   </Text>
                   <Text style={styles.disclosureBody}>
                     {lang === "en"
-                      ? "All metrics are linked solely to the Participant ID. No student names or private identifying data are disclosed or sold."
+                      ? "Results are linked only to the Participant ID. Student names are never shared with researchers, and data is never sold."
                       : "ಎಲ್ಲಾ ಡೇಟಾವನ್ನು ಕೇವಲ ಅನಾಮಧೇಯ ಸಂಶೋಧನಾ ಐಡಿಯೊಂದಿಗೆ ಜೋಡಿಸಲಾಗುತ್ತದೆ."}
                   </Text>
                 </View>
@@ -423,34 +438,37 @@ export default function ConsentGateScreen() {
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleAcceptConsent}
+                disabled={saving}
                 style={[
                   styles.primaryButton,
-                  !isFormValid && styles.primaryButtonDisabled,
+                  !isFormValid && !alreadyGiven && styles.primaryButtonDisabled,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Agree and proceed"
               >
                 <Text style={styles.primaryButtonText}>
-                  {lang === "en"
-                    ? "Accept & Continue to Home"
-                    : "ಒಪ್ಪಿಕೊಳ್ಳಿ ಮತ್ತು ಮುಂದುವರಿಯಿರಿ"}
+                  {alreadyGiven
+                    ? lang === "en" ? "Done" : "ಮುಗಿಯಿತು"
+                    : lang === "en" ? "I Agree & Continue" : "ಒಪ್ಪಿ ಮುಂದುವರಿಯಿರಿ"}
                 </Text>
                 <AppIcon name="chevron-forward" size={15} color="#FFFFFF" />
               </TouchableOpacity>
 
+              {!alreadyGiven ? (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => router.replace("/login")}
+                onPress={handleDecline}
                 style={styles.secondaryButton}
                 accessibilityRole="button"
                 accessibilityLabel="Decline and return"
               >
                 <Text style={styles.secondaryButtonText}>
                   {lang === "en"
-                    ? "Decline & Return to Sign In"
-                    : "ತಿರಸ್ಕರಿಸಿ ಮತ್ತು ಹಿಂತಿರುಗಿ"}
+                    ? "Decline & Sign Out"
+                    : "ತಿರಸ್ಕರಿಸಿ ಮತ್ತು ಸೈನ್ ಔಟ್"}
                 </Text>
               </TouchableOpacity>
+              ) : null}
             </View>
           </ScrollView>
         </SafeAreaView>

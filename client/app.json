@@ -46,7 +46,9 @@
           "photosPermission": "VGyan lets you upload a photo of your handwritten answer.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

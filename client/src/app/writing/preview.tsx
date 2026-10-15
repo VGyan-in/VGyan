@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
 import { Redirect, useRouter } from "expo-router";
-import { C, FlowButton, FlowScreen, Notice, flowStyles } from "@/components/flow-ui";
+import { ButtonRow, C, FlowButton, FlowScreen, Notice } from "@/components/flow-ui";
 import { getWritingPrompt } from "@/constants/content";
 import { recognizeHandwriting } from "@/features/writing/ocr";
 import { useApp } from "@/state/app-store";
@@ -47,7 +47,7 @@ export default function WritingPreviewScreen() {
       step={3}
       totalSteps={3}
       footer={
-        <View style={flowStyles.footerRow}>
+        <ButtonRow>
           <FlowButton
             variant="secondary"
             label={lang === "en" ? "Retake" : "ಮತ್ತೆ ತೆಗೆಯಿರಿ"}
@@ -61,7 +61,7 @@ export default function WritingPreviewScreen() {
             loading={busy}
             onPress={runOcr}
           />
-        </View>
+        </ButtonRow>
       }
     >
       <Notice
