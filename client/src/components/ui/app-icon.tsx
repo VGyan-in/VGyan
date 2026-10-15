@@ -1,5 +1,5 @@
 import React from "react";
-import { Platform, View } from "react-native";
+import { Platform } from "react-native";
 import { Image } from "expo-image";
 
 export type IconName =
@@ -26,7 +26,17 @@ export type IconName =
   | "sparkles"
   | "sync"
   | "cloud-check"
-  | "logout";
+  | "logout"
+  | "camera"
+  | "image"
+  | "keyboard"
+  | "stop"
+  | "play"
+  | "pause"
+  | "refresh"
+  | "close"
+  | "alert"
+  | "book";
 
 interface AppIconProps {
   name: IconName;
@@ -107,6 +117,36 @@ const ICON_PATHS: Record<IconName, { body: string; fill?: boolean }> = {
   },
   logout: {
     body: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />',
+  },
+  camera: {
+    body: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" />',
+  },
+  image: {
+    body: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />',
+  },
+  keyboard: {
+    body: '<rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />',
+  },
+  stop: {
+    body: '<rect x="6" y="6" width="12" height="12" rx="2" />',
+  },
+  play: {
+    body: '<polygon points="6 4 20 12 6 20 6 4" />',
+  },
+  pause: {
+    body: '<rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />',
+  },
+  refresh: {
+    body: '<polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />',
+  },
+  close: {
+    body: '<line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />',
+  },
+  alert: {
+    body: '<circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />',
+  },
+  book: {
+    body: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />',
   },
 };
 

@@ -10,17 +10,40 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AppIcon } from "@/components/ui/app-icon";
-import {
-  initialStudentProfile,
-  mockReadingAttempts,
-  initialSyncStatus,
-} from "@/constants/mock-data";
 import { BottomNavBar } from "@/components/bottom-nav-bar";
+import { WRITING_PROMPTS, findPassage, levelLabel } from "@/constants/content";
+import { useApp } from "@/state/app-store";
+import { attemptDate } from "@/utils/format";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [lang, setLang] = useState<"en" | "kn">("en");
+  const {
+    lang,
+    toggleLang,
+    profile: initialStudentProfile,
+    readingAttempts,
+    writingAttempts,
+    sync,
+    pendingCount,
+  } = useApp();
   const [selectedLevel, setSelectedLevel] = useState<"Easy" | "Medium" | "Advanced">("Medium");
+
+  const passage = findPassage(lang === "kn" ? "Kannada" : "English", selectedLevel);
+  const lastReading =
+    readingAttempts.find((a) => a.passageId === passage.id) ??
+    readingAttempts.find((a) => a.title === passage.title);
+  const todayPrompt = WRITING_PROMPTS.find((p) => p.language === (lang === "kn" ? "Kannada" : "English"))!;
+  const lastWriting = writingAttempts.find((a) => a.aiStatus !== "pending" && a.aiStatus !== "failed");
+  const avgAccuracy = readingAttempts.length
+    ? Math.round(readingAttempts.reduce((sum, a) => sum + a.accuracy, 0) / readingAttempts.length)
+    : null;
+  // Live attempts (with createdAt) first, newest first; seed data keeps its order after them.
+  const recent = [
+    ...readingAttempts.map((a) => ({ kind: "reading" as const, a, sortKey: a.createdAt ?? "" })),
+    ...writingAttempts.map((a) => ({ kind: "writing" as const, a, sortKey: a.createdAt ?? "" })),
+  ]
+    .sort((x, y) => y.sortKey.localeCompare(x.sortKey))
+    .slice(0, 4);
 
   const initials = initialStudentProfile.name
     .split(" ")
@@ -57,7 +80,7 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => setLang(lang === "en" ? "kn" : "en")}
+              onPress={toggleLang}
               style={styles.langPill}
               accessibilityRole="button"
               accessibilityLabel="Switch language"
@@ -76,9 +99,12 @@ export default function HomeScreen() {
             {/* Sync Status Banner */}
             <View style={styles.syncCard}>
               <View style={styles.syncLeft}>
-                <View style={styles.statusDot} />
+                <View style={[styles.statusDot, pendingCount > 0 && { backgroundColor: "#F59E0B" }]} />
                 <Text style={styles.syncText}>
-                  {lang === "en" ? "Offline-Ready" : "ಆಫ್‌ಲೈನ್ ಸಿದ್ಧ"} • {initialSyncStatus.totalLocalRecords} {lang === "en" ? "records synced" : "ದಾಖಲೆಗಳು ಸಿಂಕ್ ಆಗಿವೆ"}
+                  {lang === "en" ? "Offline-Ready" : "ಆಫ್‌ಲೈನ್ ಸಿದ್ಧ"} •{" "}
+                  {pendingCount > 0
+                    ? `${pendingCount} ${lang === "en" ? "waiting to sync" : "ಸಿಂಕ್‌ಗೆ ಕಾಯುತ್ತಿವೆ"}`
+                    : `${sync.totalLocalRecords} ${lang === "en" ? "records synced" : "ದಾಖಲೆಗಳು ಸಿಂಕ್ ಆಗಿವೆ"}`}
                 </Text>
               </View>
               <TouchableOpacity
@@ -122,7 +148,7 @@ export default function HomeScreen() {
               <View style={styles.statBox}>
                 <View style={styles.statIconRow}>
                   <AppIcon name="speed" size={15} color="#0B3D2E" />
-                  <Text style={styles.statNum}>92%</Text>
+                  <Text style={styles.statNum}>{avgAccuracy != null ? `${avgAccuracy}%` : "–"}</Text>
                 </View>
                 <Text style={styles.statLabel}>
                   {lang === "en" ? "Avg Accuracy" : "ನಿಖರತೆ"}
@@ -201,17 +227,21 @@ export default function HomeScreen() {
                 <Text style={styles.previewTitle}>
                   {lang === "en" ? "Selected Passage:" : "ಆಯ್ದ ಭಾಗ:"}{" "}
                   <Text style={styles.previewBold}>
-                    {lang === "en" ? "The Clever Crow" : "ಜಾಣ ಕಾಗೆ"} ({selectedLevel})
+                    {lang === "en" ? passage.title : passage.kannadaTitle} ({levelLabel(selectedLevel, lang)})
                   </Text>
                 </Text>
                 <Text style={styles.previewMeta}>
-                  Last attempt: 94% Accuracy • 82 WPM
+                  {lastReading
+                    ? `${lang === "en" ? "Last attempt" : "ಕೊನೆಯ ಪ್ರಯತ್ನ"}: ${lastReading.accuracy}% • ${lastReading.wpm} WPM`
+                    : lang === "en" ? "Not attempted yet" : "ಇನ್ನೂ ಪ್ರಯತ್ನಿಸಿಲ್ಲ"}
                 </Text>
               </View>
 
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => router.push("/progress")}
+                onPress={() =>
+                  router.push({ pathname: "/reading/language", params: { level: selectedLevel } })
+                }
                 style={styles.cardPrimaryBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Start Reading Assessment"
@@ -257,18 +287,18 @@ export default function HomeScreen() {
                   {lang === "en" ? "Today's Prompt:" : "ಇಂದಿನ ವಿಷಯ:"}
                 </Text>
                 <Text style={styles.promptText}>
-                  "{lang === "en"
-                    ? "Describe your favorite festival and how your family celebrates it."
-                    : "ನಿಮ್ಮ ನೆಚ್ಚಿನ ಹಬ್ಬ ಮತ್ತು ಅದನ್ನು ನೀವು ಹೇಗೆ ಆಚರಿಸುತ್ತೀರಿ ಎಂಬುದನ್ನು ವಿವರಿಸಿ."}"
+                  &quot;{lang === "en" ? todayPrompt.prompt : todayPrompt.kannadaPrompt}&quot;
                 </Text>
                 <Text style={styles.previewMeta}>
-                  Last score: 8.8 / 10 • 74 Words
+                  {lastWriting
+                    ? `${lang === "en" ? "Last score" : "ಕೊನೆಯ ಅಂಕ"}: ${lastWriting.score.toFixed(1)} / 10 • ${lastWriting.wordCount} ${lang === "en" ? "Words" : "ಪದಗಳು"}`
+                    : lang === "en" ? "Not attempted yet" : "ಇನ್ನೂ ಪ್ರಯತ್ನಿಸಿಲ್ಲ"}
                 </Text>
               </View>
 
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => router.push("/progress")}
+                onPress={() => router.push("/writing/prompt")}
                 style={styles.cardPrimaryBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Start Writing Assessment"
@@ -296,32 +326,61 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.historyCard}>
-              {mockReadingAttempts.slice(0, 3).map((item) => (
-                <View key={item.id} style={styles.historyRow}>
+              {recent.length === 0 ? (
+                <Text style={[styles.historyMeta, { paddingVertical: 14, textAlign: "center" }]}>
+                  {lang === "en"
+                    ? "No assessments yet. Start one above!"
+                    : "ಇನ್ನೂ ಯಾವುದೇ ಮೌಲ್ಯಮಾಪನ ಇಲ್ಲ. ಮೇಲೆ ಪ್ರಾರಂಭಿಸಿ!"}
+                </Text>
+              ) : null}
+              {recent.map((entry) => (
+                <TouchableOpacity
+                  key={entry.a.id}
+                  activeOpacity={0.7}
+                  style={styles.historyRow}
+                  onPress={() =>
+                    router.push({
+                      pathname: entry.kind === "reading" ? "/reading/result" : "/writing/result",
+                      params: { id: entry.a.id },
+                    })
+                  }
+                  accessibilityRole="button"
+                >
                   <View style={styles.langChip}>
-                    <Text style={styles.langChipText}>
-                      {item.language === "English" ? "EN" : "KN"}
-                    </Text>
+                    <AppIcon name={entry.kind === "reading" ? "mic" : "pencil"} size={13} color="#0B3D2E" />
                   </View>
                   <View style={styles.historyInfo}>
                     <Text style={styles.historyTitle} numberOfLines={1}>
-                      {lang === "en" ? item.title : item.kannadaTitle}
+                      {entry.kind === "reading"
+                        ? lang === "en" ? entry.a.title : entry.a.kannadaTitle
+                        : lang === "en" ? entry.a.prompt : entry.a.kannadaPrompt}
                     </Text>
                     <Text style={styles.historyMeta}>
-                      {item.date} • {item.level} • {item.wpm} WPM
+                      {attemptDate(entry.a)} • {entry.a.language === "English" ? "EN" : "KN"} •{" "}
+                      {entry.kind === "reading"
+                        ? `${entry.a.level} • ${entry.a.wpm} WPM`
+                        : `${entry.a.wordCount} ${lang === "en" ? "words" : "ಪದಗಳು"}`}
                     </Text>
                   </View>
                   <View style={styles.historyScoreBlock}>
-                    <Text style={styles.historyScoreNum}>{item.accuracy}%</Text>
-                    <Text style={styles.historyScoreSub}>Accuracy</Text>
+                    <Text style={styles.historyScoreNum}>
+                      {entry.kind === "reading"
+                        ? `${entry.a.accuracy}%`
+                        : entry.a.aiStatus === "pending" || entry.a.aiStatus === "failed"
+                        ? "…"
+                        : entry.a.score.toFixed(1)}
+                    </Text>
+                    <Text style={styles.historyScoreSub}>
+                      {entry.kind === "reading" ? (lang === "en" ? "Accuracy" : "ನಿಖರತೆ") : "/ 10"}
+                    </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </ScrollView>
 
           {/* Persistent Bottom Nav */}
-          <BottomNavBar activeTab="home" />
+          <BottomNavBar activeTab="home" syncBadgeCount={pendingCount} />
         </SafeAreaView>
       </View>
     </View>

@@ -3,14 +3,13 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AppProvider } from "@/state/app-store";
 
 export default function RootLayout() {
   // Preload screen images in memory to completely eliminate the blank screen pause
   useEffect(() => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const assets = [
-        require("@/assets/images/welcome_exact.png"),
-        require("@/assets/images/leaf_icon.png"),
         // require("@/assets/images/onboarding1_exact.png"),
         // require("@/assets/images/onboarding2_exact.png"),
         require("@/assets/images/login_exact.png"),
@@ -25,26 +24,31 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: Platform.OS === "web" ? "fade" : "slide_from_right",
-          animationDuration: 180,
-          contentStyle: { backgroundColor: "#FAF5EB" },
-        }}
-      >
-        <Stack.Screen name="index" />
-        {/* Onboarding screens commented out */}
-        {/* <Stack.Screen name="onboarding1" /> */}
-        {/* <Stack.Screen name="onboarding2" /> */}
-        <Stack.Screen name="login" />
-        <Stack.Screen name="register" />
-        <Stack.Screen name="consent" />
-        <Stack.Screen name="home" />
-        <Stack.Screen name="progress" />
-        <Stack.Screen name="profile" />
-      </Stack>
+      <AppProvider>
+        <StatusBar style="dark" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: Platform.OS === "web" ? "fade" : "slide_from_right",
+            animationDuration: 180,
+            contentStyle: { backgroundColor: "#FAF5EB" },
+          }}
+        >
+          <Stack.Screen name="index" />
+          {/* Onboarding screens commented out */}
+          {/* <Stack.Screen name="onboarding1" /> */}
+          {/* <Stack.Screen name="onboarding2" /> */}
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="consent" />
+          <Stack.Screen name="home" />
+          <Stack.Screen name="progress" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="reading" />
+          <Stack.Screen name="writing" />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </AppProvider>
     </SafeAreaProvider>
   );
 }

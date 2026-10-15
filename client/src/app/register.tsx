@@ -12,10 +12,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Palette } from "@/constants/theme";
+import { useApp } from "@/state/app-store";
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { register } = useApp();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [participantId, setParticipantId] = useState("");
@@ -35,6 +36,8 @@ export default function RegisterScreen() {
   };
 
   const handleRegister = () => {
+    // STUB: replace with POST /student/register, which returns the participant ID.
+    register({ fullName, email, participantId });
     router.replace("/consent");
   };
 

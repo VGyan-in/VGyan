@@ -32,6 +32,20 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "VGyan records your voice while you read aloud so it can check your reading fluency."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "VGyan uses the camera to capture your handwritten answers.",
+          "photosPermission": "VGyan lets you upload a photo of your handwritten answer.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {
