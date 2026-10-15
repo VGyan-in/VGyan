@@ -16,9 +16,11 @@ Expo Go is enough for everything in this build. Real on-device speech recognitio
 ## Check it
 
 ```bash
-npm run typecheck
-npm run lint
+npm run typecheck        # Generates typed routes and validates TypeScript
+npm run lint             # ESLint (Expo flat config)
 npm test                 # Jest: reading analyzer, writing metrics, sync queue, backoff
+npm run test:ci          # Jest with coverage and GitHub Actions annotations
+npm run export:web       # Verifies web bundle exports cleanly
 ```
 
 ## How it works

@@ -54,7 +54,10 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
-    "typecheck": "tsc --noEmit"
+    "test:ci": "jest --ci --coverage --reporters=default --reporters=github-actions",
+    "typegen": "node scripts/generate-routes.js",
+    "typecheck": "node scripts/generate-routes.js && tsc --noEmit",
+    "export:web": "expo export --platform web"
   },
   "private": true,
   "jest": {

@@ -1,5 +1,9 @@
 # AI-Based Bilingual Reading & Writing Assessment: Mobile App
 
+[![CI - Quality & Tests](https://github.com/VGyan-in/VGyan/actions/workflows/ci.yml/badge.svg)](https://github.com/VGyan-in/VGyan/actions/workflows/ci.yml)
+[![CD - Android Build](https://github.com/VGyan-in/VGyan/actions/workflows/android-build.yml/badge.svg)](https://github.com/VGyan-in/VGyan/actions/workflows/android-build.yml)
+[![Security & Audit](https://github.com/VGyan-in/VGyan/actions/workflows/security.yml/badge.svg)](https://github.com/VGyan-in/VGyan/actions/workflows/security.yml)
+
 React Native (TypeScript) Android app for assessing school students' **reading fluency** and **writing proficiency** in **English and Kannada**. It works offline for reading and ASR, preserves the full research data chain (original input → processed → assessed), and syncs to a FastAPI backend when connectivity returns.
 
 > Part of a three-component system: **mobile app (this repo)**, `backend/` (FastAPI + PostgreSQL + object storage), `teacher-dashboard/` (React). Requirements: see the SRS v1.0 and the Execution & Implementation Plan.
@@ -418,7 +422,11 @@ ASR:       The boy go to school.
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`)
 - **Code:** strict TypeScript, no `any` in `core/` and pipelines; feature folders own their screens, services, and types
 - **Rule:** UI code never touches SQLite or the network directly; screens call hooks → services → repositories
-- **CI (GitHub Actions):** lint, typecheck, unit tests, debug APK build on every PR
+- **CI / CD (GitHub Actions):**
+  - **CI Workflow (`ci.yml`):** Runs on push and pull requests for `client/**`. Executes ESLint (`expo lint`), TypeScript typechecking (`tsc --noEmit` with automated typed-routes generation), Jest unit test suite with coverage (`test:ci`), static web export validation (`export:web`), and Continuous Native Generation prebuild validation (`expo prebuild`).
+  - **Android CD Workflow (`android-build.yml`):** Compiles native Android debug or release APKs using Gradle on demand (`workflow_dispatch`) or automatically upon pushing version tags (`v*.*.*`), publishing the signed or debug APK as an artifact and GitHub Release asset.
+  - **EAS Cloud Build (`eas-build.yml`):** Integrates Expo Application Services (`eas build`) for preview, development client, and production app bundle builds.
+  - **Security & Audit (`security.yml`):** Automated weekly and PR dependency security audit (`npm audit`).
 
 ## 16. Roadmap
 

@@ -1,0 +1,27 @@
+name: Security & Audit
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Every Sunday at midnight UTC
+  pull_request:
+    paths:
+      - 'client/package.json'
+      - 'client/package-lock.json'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run npm audit (high/critical)
+        working-directory: client
+        run: npm audit --audit-level=high --omit=dev
