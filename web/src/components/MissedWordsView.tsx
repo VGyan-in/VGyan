@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Volume2, Sparkles, BookOpen, Layers } from 'lucide-react';
+import { Sparkles, Layers } from 'lucide-react';
 import { MissedWord } from '../types';
 
 interface MissedWordsViewProps {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, Plus, Send, Tag, User, Clock } from 'lucide-react';
+import { MessageSquare, Send, User, Clock } from 'lucide-react';
 import { TeacherComment, Student } from '../types';
 
 interface TeacherNotesViewProps {

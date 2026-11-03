@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   TrendingUp,
   FileCheck2,
-  BookOpen,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -44,7 +43,6 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
   const avgWpm = Math.round(
     students.reduce((acc, s) => acc + s.averageWpm, 0) / (totalStudents || 1)
   );
-  const totalReadings = students.reduce((acc, s) => acc + s.recentReadingAttempts.length, 0);
 
   return (
     <div style={styles.container} className="fade-in">

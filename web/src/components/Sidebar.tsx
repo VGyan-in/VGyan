@@ -9,8 +9,6 @@ import {
   MessageSquare,
   Download,
   School,
-  ChevronRight,
-  LogOut,
 } from 'lucide-react';
 import { Teacher, ClassGroup } from '../types';
 
@@ -64,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div style={styles.brandContainer}>
         <div style={styles.logoWrap}>
-          <img src="/vgyan_logo.png" alt="VGyan Logo" style={styles.logoImg} />
+          <img src={`${import.meta.env.BASE_URL}vgyan_logo.png`} alt="VGyan Logo" style={styles.logoImg} />
         </div>
         <div>
           <h1 style={styles.brandTitle}>VGyan Portal</h1>

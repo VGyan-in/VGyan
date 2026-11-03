@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Plus, CheckCircle, MessageSquare, ArrowRight, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, CheckCircle, MessageSquare, ArrowRight, ShieldAlert } from 'lucide-react';
 import { Student } from '../types';
 
 interface AtRiskWatchlistProps {

@@ -1,32 +1,44 @@
-# React + TypeScript + Vite
+# VGyan Teacher Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + TypeScript + Vite dashboard for teachers: class overview, at-risk watchlist, student directory, reading and writing submissions, frequently missed words, teacher notes, and the anonymised research CSV export.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+cp .env.example .env.local   # optional
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+| Script | What it does |
+|---|---|
+| `npm run dev` | Dev server with HMR |
+| `npm run build` | Typecheck (`tsc -b`) and production build to `dist/` |
+| `npm run lint` | Oxlint |
+
+## Data source
+
+All data goes through [`src/api/dashboard.ts`](src/api/dashboard.ts).
+
+- `VITE_API_BASE_URL` **empty** (default): demo mode on the bundled data in `src/data/mockData.ts`. Notes are kept in memory only.
+- `VITE_API_BASE_URL` **set**: the dashboard calls the backend, sending `Authorization: Bearer <token>` from `localStorage["vgyan.teacher.token"]` when present.
+
+Proposed endpoints (responses use the shapes in [`src/types.ts`](src/types.ts)):
+
+| Method | Endpoint | Returns |
+|---|---|---|
+| GET | `/teacher/me` | `Teacher` with `assignedClasses` |
+| GET | `/teacher/students` | `Student[]` for the teacher's classes, with recent attempts |
+| GET | `/teacher/missed-words` | `MissedWord[]` |
+| GET | `/teacher/comments` | `TeacherComment[]` |
+| POST | `/teacher/comments` | Body `{ studentId, text, category }` → saved `TeacherComment` |
+
+Teacher login is not built yet; it depends on how the backend issues teacher tokens.
+
+## Deploy
+
+`.github/workflows/web-deploy.yml` builds and publishes the dashboard to GitHub Pages on every push to `main` that touches `web/` (or run it by hand from the Actions tab). It runs in demo mode with a "sample data" banner until the repository variable `VITE_API_BASE_URL` is set under Settings → Secrets and variables → Actions → Variables.
+
+## Research export
+
+The CSV export includes only students whose consent status is `active`, and only the Participant ID (no names or student IDs).

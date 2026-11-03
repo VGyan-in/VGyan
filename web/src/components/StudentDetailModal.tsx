@@ -3,14 +3,10 @@ import {
   X,
   BookOpen,
   PenTool,
-  Clock,
   Play,
   Volume2,
-  AlertCircle,
-  FileCheck,
   Sparkles,
   Send,
-  MessageSquare,
 } from 'lucide-react';
 import {
   Radar,

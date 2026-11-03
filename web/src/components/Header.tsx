@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, CheckCircle2, Globe, Bell, Calendar } from 'lucide-react';
+import { CheckCircle2, Globe, Calendar } from 'lucide-react';
 import { ClassGroup } from '../types';
 
 interface HeaderProps {

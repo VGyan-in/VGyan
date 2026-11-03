@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ChevronRight, User } from 'lucide-react';
+import { Search, Filter, ShieldCheck, AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { Student } from '../types';
 
 interface StudentDirectoryProps {

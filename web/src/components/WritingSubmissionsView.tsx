@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { PenTool, Image as ImageIcon, Sparkles, CheckCircle, FileText } from 'lucide-react';
+import React from 'react';
+import { Image as ImageIcon, Sparkles, FileText } from 'lucide-react';
 import { Student } from '../types';
 
 interface WritingSubmissionsViewProps {

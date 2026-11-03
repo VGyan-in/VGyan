@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ClassOverview } from './components/ClassOverview';
@@ -9,22 +9,65 @@ import { MissedWordsView } from './components/MissedWordsView';
 import { WritingSubmissionsView } from './components/WritingSubmissionsView';
 import { TeacherNotesView } from './components/TeacherNotesView';
 import { ResearchExportModal } from './components/ResearchExportModal';
-import {
-  CURRENT_TEACHER,
-  INITIAL_STUDENTS,
-  INITIAL_MISSED_WORDS,
-  INITIAL_COMMENTS,
-} from './data/mockData';
+import { addComment, isDemoMode, loadDashboard, type DashboardData } from './api/dashboard';
 import { Student, ClassGroup, TeacherComment } from './types';
-import { BookOpen, AlertCircle } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 
 export default function App() {
-  const [teacher] = useState(CURRENT_TEACHER);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDashboard()
+      .then((d) => !cancelled && setData(d))
+      .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : 'Could not load data'));
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  if (error) {
+    return (
+      <div style={styles.statusScreen}>
+        <p style={styles.bannerHeading}>Couldn't load the dashboard</p>
+        <p style={styles.bannerText}>{error}</p>
+        <button
+          style={styles.retryButton}
+          onClick={() => {
+            setError(null);
+            setReloadKey((k) => k + 1);
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div style={styles.statusScreen}>
+        <p style={styles.bannerText}>Loading class data…</p>
+      </div>
+    );
+  }
+  if (data.teacher.assignedClasses.length === 0) {
+    return (
+      <div style={styles.statusScreen}>
+        <p style={styles.bannerHeading}>No classes assigned</p>
+        <p style={styles.bannerText}>Ask your school administrator to assign a class to your account.</p>
+      </div>
+    );
+  }
+  return <Dashboard data={data} />;
+}
+
+function Dashboard({ data }: { data: DashboardData }) {
+  const { teacher, students, missedWords } = data;
   const [selectedClass, setSelectedClass] = useState<ClassGroup>(teacher.assignedClasses[0]);
   const [currentTab, setCurrentTab] = useState<NavTab>('overview');
-  const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
-  const [missedWords] = useState(INITIAL_MISSED_WORDS);
-  const [comments, setComments] = useState<TeacherComment[]>(INITIAL_COMMENTS);
+  const [comments, setComments] = useState<TeacherComment[]>(data.comments);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [lang, setLang] = useState<'en' | 'kn'>('en');
@@ -39,21 +82,11 @@ export default function App() {
     text: string,
     category: 'Intervention' | 'Praise' | 'Parent Note' | 'General' = 'Intervention'
   ) => {
-    const newCmt: TeacherComment = {
-      id: `cmt_${Date.now()}`,
-      studentId,
-      studentName,
-      author: teacher.name,
-      text,
-      category,
-      timestamp: new Date().toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    };
-    setComments([newCmt, ...comments]);
+    addComment({ studentId, text, category }, teacher.name, studentName)
+      .then((saved) => setComments((prev) => [saved, ...prev]))
+      .catch((e: unknown) => {
+        window.alert(`Note not saved: ${e instanceof Error ? e.message : 'unknown error'}`);
+      });
   };
 
   const getTabTitle = () => {
@@ -120,6 +153,12 @@ export default function App() {
           lang={lang}
           onToggleLang={() => setLang(lang === 'en' ? 'kn' : 'en')}
         />
+
+        {isDemoMode && (
+          <div style={styles.demoBanner} role="note">
+            Demo mode: all students, teachers and scores shown here are sample data, not real records.
+          </div>
+        )}
 
         <main style={styles.pageBody}>
           {currentTab === 'overview' && (
@@ -202,6 +241,36 @@ export default function App() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  statusScreen: {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    padding: '1rem',
+    textAlign: 'center',
+    backgroundColor: 'var(--color-soft-cream)',
+  },
+  demoBanner: {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#FEF3C7',
+    borderBottom: '1px solid #FCD34D',
+    color: '#78350F',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: '0.75rem',
+    padding: '0.5rem 1rem',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--color-leaf-tint)',
+    backgroundColor: 'var(--color-light-green)',
+    color: 'var(--color-deep-forest)',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   appLayout: {
     display: 'flex',
     minHeight: '100vh',

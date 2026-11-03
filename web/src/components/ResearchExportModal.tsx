@@ -13,8 +13,9 @@ export const ResearchExportModal: React.FC<ResearchExportModalProps> = ({
 }) => {
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  // Generate anonymized research records (Complies with PDF privacy rules: Participant ID only, no student names or IDs)
-  const anonymizedRows = students.map((s) => ({
+  // Generate anonymized research records (Complies with PDF privacy rules: Participant ID only, no student names or IDs).
+  // Only participants with active consent are exported; withdrawn or pending consent must never reach the dataset.
+  const anonymizedRows = students.filter((s) => s.consentStatus === 'active').map((s) => ({
     participant_id: s.participantId,
     age_group: `${s.age} yrs`,
     grade_level: `Class ${s.grade}`,
@@ -29,18 +30,20 @@ export const ResearchExportModal: React.FC<ResearchExportModalProps> = ({
   }));
 
   const handleDownloadCSV = () => {
+    if (anonymizedRows.length === 0) return;
     const headers = Object.keys(anonymizedRows[0]).join(',');
     const rows = anonymizedRows
-      .map((r) => Object.values(r).map((v) => `"${v}"`).join(','))
+      .map((r) => Object.values(r).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
       .join('\n');
-    const csvContent = `data:text/csv;charset=utf-8,${headers}\n${rows}`;
-    const encodedUri = encodeURI(csvContent);
+    // Blob instead of a data: URI, which truncates at the first '#' and caps size in some browsers.
+    const url = URL.createObjectURL(new Blob([`${headers}\n${rows}`], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `VGyan_Research_Dataset_Anonymized_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
     setDownloadSuccess(true);
     setTimeout(() => setDownloadSuccess(false), 2500);
@@ -113,7 +116,11 @@ export const ResearchExportModal: React.FC<ResearchExportModalProps> = ({
               <span>Format: Standard UTF-8 CSV • Compatible with Python pandas & R</span>
             </div>
 
-            <button onClick={handleDownloadCSV} style={styles.downloadBtn}>
+            <button
+              onClick={handleDownloadCSV}
+              disabled={anonymizedRows.length === 0}
+              style={{ ...styles.downloadBtn, ...(anonymizedRows.length === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+            >
               <Download size={16} />
               <span>{downloadSuccess ? 'Downloaded!' : 'Download Research CSV'}</span>
             </button>
