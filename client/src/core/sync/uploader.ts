@@ -1,11 +1,12 @@
 import { Platform } from "react-native";
+import { AUTH_TOKEN_KEY } from "@/core/api/client";
 import { config, isServerConfigured } from "@/core/config";
 import type { Repository } from "@/core/db/types";
 import { secureStore } from "@/core/storage/secure";
 import type { SyncItem } from "@/types/models";
 import type { Uploader, UploadOutcome } from "./queue";
 
-export const AUTH_TOKEN_KEY = "vgyan.auth.token";
+export { AUTH_TOKEN_KEY };
 
 const ENDPOINTS: Record<SyncItem["entityType"], string> = {
   reading: "/sync/reading",

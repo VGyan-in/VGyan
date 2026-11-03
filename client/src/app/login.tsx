@@ -33,9 +33,13 @@ export default function LoginScreen() {
         ? en
           ? "No account with that ID or email on this phone. Check it, or create an account."
           : "ಈ ಫೋನ್‌ನಲ್ಲಿ ಆ ಐಡಿ ಅಥವಾ ಇಮೇಲ್‌ನ ಖಾತೆ ಇಲ್ಲ. ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಹೊಸ ಖಾತೆ ತೆರೆಯಿರಿ."
+        : res.error === "wrong-password"
+        ? en
+          ? "That password doesn't match. Try again."
+          : "ಪಾಸ್‌ವರ್ಡ್ ಹೊಂದುತ್ತಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
         : en
-        ? "That password doesn't match. Try again."
-        : "ಪಾಸ್‌ವರ್ಡ್ ಹೊಂದುತ್ತಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+        ? "The server couldn't sign you in right now. Try again in a moment."
+        : "ಸರ್ವರ್ ಈಗ ಸೈನ್ ಇನ್ ಮಾಡಲು ಆಗುತ್ತಿಲ್ಲ. ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಪ್ರಯತ್ನಿಸಿ."
     );
   };
 

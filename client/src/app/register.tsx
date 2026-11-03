@@ -55,9 +55,17 @@ export default function RegisterScreen() {
         ? en
           ? "An account with this participant ID already exists on this phone. Sign in instead."
           : "ಈ ಐಡಿಯ ಖಾತೆ ಈಗಾಗಲೇ ಇದೆ. ಸೈನ್ ಇನ್ ಮಾಡಿ."
+        : res.error === "email-exists"
+        ? en
+          ? "An account with this email already exists on this phone. Sign in instead."
+          : "ಈ ಇಮೇಲ್‌ನ ಖಾತೆ ಈಗಾಗಲೇ ಇದೆ. ಸೈನ್ ಇನ್ ಮಾಡಿ."
+        : res.error === "network"
+        ? en
+          ? "Creating an account needs an internet connection. Connect and try again."
+          : "ಖಾತೆ ತೆರೆಯಲು ಇಂಟರ್ನೆಟ್ ಬೇಕು. ಸಂಪರ್ಕಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
         : en
-        ? "An account with this email already exists on this phone. Sign in instead."
-        : "ಈ ಇಮೇಲ್‌ನ ಖಾತೆ ಈಗಾಗಲೇ ಇದೆ. ಸೈನ್ ಇನ್ ಮಾಡಿ."
+        ? "The server couldn't create the account right now. Try again in a moment."
+        : "ಸರ್ವರ್ ಈಗ ಖಾತೆ ತೆರೆಯಲು ಆಗುತ್ತಿಲ್ಲ. ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಪ್ರಯತ್ನಿಸಿ."
     );
   };
 

@@ -1,4 +1,5 @@
 import type { AlignedWord } from "@/features/reading/analyzer";
+import type { FluencyMetrics } from "@/features/reading/fluency";
 import type { AiFeedback, WritingAssessment } from "@/features/feedback/ai";
 import type { AssessmentLanguage, Level } from "@/constants/content";
 
@@ -72,6 +73,8 @@ export interface ReadingAttempt {
   insertions: number;
   practiceWords: string[];
   words: AlignedWord[];
+  /** Pause/repetition measures; present only when ASR returned word timestamps. */
+  fluency?: FluencyMetrics;
   aiStatus: AiStatus;
   feedback?: AiFeedback;
   synced: boolean;

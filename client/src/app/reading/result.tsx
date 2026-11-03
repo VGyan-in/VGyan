@@ -55,6 +55,8 @@ export default function ReadingResultScreen() {
           pace: attempt.pace,
           omissions: attempt.omissions ?? 0,
           practiceWords: attempt.practiceWords,
+          referenceText: attempt.referenceText,
+          transcript: attempt.transcript,
         },
         attempt.language
       );
@@ -169,6 +171,9 @@ export default function ReadingResultScreen() {
             ))}
             {attempt.feedback.improvements.map((s, i) => (
               <Bullet key={`i${i}`} icon="sparkles" color={C.amber} text={s} />
+            ))}
+            {attempt.feedback.suggestions?.map((s, i) => (
+              <Bullet key={`t${i}`} icon="sparkles" color={C.amber} text={s} />
             ))}
           </>
         ) : (

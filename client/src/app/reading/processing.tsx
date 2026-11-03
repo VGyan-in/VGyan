@@ -6,6 +6,7 @@ import { C, Card, FlowButton, FlowScreen, Notice } from "@/components/flow-ui";
 import { getPassage } from "@/constants/content";
 import { analyzeReading } from "@/features/reading/analyzer";
 import { transcribe } from "@/features/reading/asr";
+import { computeFluency } from "@/features/reading/fluency";
 import { requestReadingFeedback } from "@/features/feedback/ai";
 import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
@@ -89,6 +90,7 @@ export default function ReadingProcessingScreen() {
         audioUri,
         asrConfidence: asr.confidence,
         asrModelVersion: asr.modelVersion,
+        fluency: asr.words ? computeFluency(asr.words) ?? undefined : undefined,
         aiStatus: "pending",
         });
       } catch (e) {
@@ -105,7 +107,10 @@ export default function ReadingProcessingScreen() {
       mark("feedback", "running");
 
       try {
-        const feedback = await requestReadingFeedback(analysis, passage.language);
+        const feedback = await requestReadingFeedback(
+          { ...analysis, referenceText: passage.text, transcript: asr.transcript },
+          passage.language
+        );
         await updateReadingAttempt(id, { feedback, aiStatus: "completed" });
         mark("feedback", "done");
       } catch (e) {

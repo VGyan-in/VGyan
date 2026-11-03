@@ -1,5 +1,6 @@
 import type { AssessmentLanguage } from "@/constants/content";
 import { tokenize } from "./analyzer";
+import type { AsrWord } from "./fluency";
 
 export interface AsrRequest {
   audioUri: string | null;
@@ -12,6 +13,8 @@ export interface AsrResult {
   transcript: string;
   confidence: number;
   modelVersion: string;
+  /** Per-word timings from Vosk; enables pause/repetition metrics. The stub has none. */
+  words?: AsrWord[];
 }
 
 /**

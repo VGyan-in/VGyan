@@ -1,4 +1,7 @@
+import { Platform } from "react-native";
 import type { AssessmentLanguage } from "@/constants/content";
+import { postForm } from "@/core/api/client";
+import { isServerConfigured } from "@/core/config";
 
 export interface OcrResult {
   text: string;
@@ -6,17 +9,46 @@ export interface OcrResult {
   engineVersion: string;
 }
 
+interface RemoteOcr {
+  text?: unknown;
+  confidence?: unknown;
+  engine_version?: unknown;
+}
+
 /**
  * Handwriting OCR.
  *
- * STUB: the real call is `POST /ocr` on the backend (keeps OCR credentials off
- * the device). Until that exists this returns a sample transcription with a few
- * typical OCR slips, so the correction screen can be exercised end to end.
+ * With a server configured this sends the original photo to `POST /ocr` (OCR
+ * credentials stay on the backend). Kannada needs a multi-language engine there;
+ * OCR.space engine 1 rejects "kan" with E201, so the backend should use engine 2.
+ * Without a server it returns a sample transcription so the correction screen
+ * can still be exercised end to end.
  */
 export async function recognizeHandwriting(
-  _imageUri: string,
+  imageUri: string,
   language: AssessmentLanguage
 ): Promise<OcrResult> {
+  if (!isServerConfigured()) return sampleOcr(language);
+
+  const body = new FormData();
+  body.append("language", language === "Kannada" ? "kn" : "en");
+  if (Platform.OS === "web") {
+    body.append("file", await (await fetch(imageUri)).blob(), "writing.jpg");
+  } else {
+    // React Native FormData accepts { uri, name, type } for file parts.
+    body.append("file", { uri: imageUri, name: "writing.jpg", type: "image/jpeg" } as unknown as Blob);
+  }
+
+  const res = await postForm<RemoteOcr>("/ocr", body, { timeoutMs: 120_000 });
+  if (typeof res.text !== "string") throw new Error("OCR response has no text");
+  return {
+    text: res.text.trim(),
+    confidence: typeof res.confidence === "number" ? res.confidence : 0,
+    engineVersion: typeof res.engine_version === "string" ? res.engine_version : "unknown",
+  };
+}
+
+async function sampleOcr(language: AssessmentLanguage): Promise<OcrResult> {
   await new Promise((r) => setTimeout(r, 1600));
 
   const text =

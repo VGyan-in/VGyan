@@ -13,6 +13,7 @@ import * as Network from "expo-network";
 import type { Lang } from "@/constants/content";
 import { config, isServerConfigured } from "@/core/config";
 import { hashPassword, newId, verifyPassword } from "@/core/auth/credentials";
+import { clearAuthToken, remoteLogin, remoteRegister } from "@/core/auth/remote";
 import { createRepository } from "@/core/db/repository";
 import type { Repository } from "@/core/db/types";
 import { deleteMedia, persistMedia } from "@/core/storage/files";
@@ -402,7 +403,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (await repo.getProfile(participantId))
         return { ok: false, error: "participant-exists" };
       if (email && (await repo.findProfile(email))) return { ok: false, error: "email-exists" };
-      // STUB: POST /student/register once the backend exists; it will issue the participant ID.
+      // With a server, the account must exist there too or every upload would be rejected,
+      // so registration needs a connection. Without one, the account is local only.
+      if (isServerConfigured()) {
+        const remote = await remoteRegister({ participantId, fullName: input.fullName.trim(), email, password: input.password });
+        if (!remote.ok) return remote;
+      }
       const ts = new Date().toISOString();
       const p: StudentProfile = {
         studentId: newId(),
@@ -430,8 +436,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (identifier: string, password: string): Promise<ActionResult> => {
-      // STUB: POST /student/login (JWT to secure storage) once the backend exists.
       const stored = await repo.findProfile(identifier);
+
+      if (isServerConfigured()) {
+        // The server knows students by participant ID; an email only resolves via this phone.
+        const participantId = stored?.profile.participantId ?? identifier.trim().toUpperCase();
+        const remote = await remoteLogin(participantId, password);
+        if (remote.ok) {
+          // Keep the local credential in step so the next offline sign-in works.
+          const credential = await hashPassword(password);
+          if (stored) {
+            await repo.saveProfile(stored.profile, credential);
+          } else {
+            const ts = new Date().toISOString();
+            await repo.saveProfile(
+              {
+                studentId: newId(),
+                participantId,
+                name: participantId,
+                email: "",
+                grade: "",
+                section: "",
+                school: "",
+                schoolType: "",
+                medium: "",
+                nativeLanguage: "",
+                otherLanguages: "",
+                ageGroup: "",
+                gender: "",
+                createdAt: ts,
+                updatedAt: ts,
+              },
+              credential
+            );
+          }
+          await startSignedIn(participantId);
+          return { ok: true };
+        }
+        // Offline: fall through to the copy on this phone. Any other answer from the server is final.
+        if (remote.error !== "network") return remote;
+      }
+
       if (!stored) return { ok: false, error: "not-found" };
       if (!(await verifyPassword(password, stored.credential))) return { ok: false, error: "wrong-password" };
       await startSignedIn(stored.profile.participantId);
@@ -441,6 +486,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    await clearAuthToken();
     await repo.setMeta(META.participant, null);
     setProfile(null);
     setSessionId(null);

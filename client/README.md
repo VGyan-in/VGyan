@@ -49,10 +49,19 @@ Each stand-in is a single function, so the screens won't change when the real on
 
 | Stand-in | File | Replace with |
 |---|---|---|
-| Speech recognition | `src/features/reading/asr.ts` | Vosk (`react-native-vosk`) with the TDNN models |
-| Handwriting OCR | `src/features/writing/ocr.ts` | `POST /ocr` |
-| Reading feedback and writing scores | `src/features/feedback/ai.ts` | `POST /ai/reading-feedback`, `POST /ai/writing-assessment` |
-| Register and sign in | `register` and `login` in `src/state/app-store.tsx` | `POST /student/register`, `POST /student/login` (JWT is already stored in `expo-secure-store`) |
+| Speech recognition | `src/features/reading/asr.ts` | Vosk (`react-native-vosk`) with the TDNN models. Return `words` (word, start, end, conf) and pause/repetition metrics are filled in automatically (`src/features/reading/fluency.ts`) |
+
+OCR, AI feedback and accounts already call the backend once `EXPO_PUBLIC_API_BASE_URL` is set; without it they use local sample/rule-based output and on-device accounts. With a server set, a failed OCR/AI call marks the attempt `failed` and it is retried on the next sync. Creating an account needs a connection (the server must know the student or uploads are rejected); signing in falls back to the on-device copy when offline, and the token lives in `expo-secure-store`.
+
+| Endpoint | Request | Response |
+|---|---|---|
+| `POST /student/register` | JSON: `student_id` (participant ID), `fullName`, `email`, `password` | any 2xx; 409 = ID already taken |
+| `POST /student/login` | JSON: `student_id`, `password` | `{ access_token, token_type }`; 401 = wrong password, 404 = unknown ID |
+| `POST /ocr` | multipart: `file` (original photo), `language` (`en`/`kn`) | `{ text, confidence, engine_version }` |
+| `POST /ai/reading-feedback` | JSON: `language`, `reference_text`, `transcript`, `metrics { accuracy, wpm, pace, omissions, practice_words }` | `{ summary, working_well[], needs_improvement[], suggestions[], practice_words[], model_version, prompt_version }` |
+| `POST /ai/writing-assessment` | JSON: `language`, `text`, `min_words`, `metrics { word_count, sentence_count }` | the reading fields plus `corrected, grammar_score, vocabulary_score, spelling_score` (0–100), `score` (0–10), `misspelled[]` |
+
+Response keys follow the structured-output schema of the Gemini prompts in the client's StudentSkillManager app, so those prompts can move to the backend as-is. Reading `practice_words` are filtered to words that appear in the passage.
 
 With no `EXPO_PUBLIC_API_BASE_URL` set, uploads wait in the queue and nothing is lost. Once the URL is set, the uploader sends multipart `record` (JSON) and `file` fields to `/sync/reading`, `/sync/writing` and `/sync/consent`. The backend must upsert on the record ID; 2xx and 409 both count as received.
 

@@ -17,6 +17,7 @@ import {
 } from "@/components/flow-ui";
 import { getWritingPrompt, languageLabel } from "@/constants/content";
 import { requestWritingAssessment } from "@/features/feedback/ai";
+import { diffWords } from "@/features/writing/diff";
 import { computeWritingMetrics } from "@/features/writing/metrics";
 import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
@@ -158,6 +159,9 @@ export default function WritingResultScreen() {
               {assessment.improvements.map((s, i) => (
                 <Bullet key={`i${i}`} icon="sparkles" color={C.amber} text={s} />
               ))}
+              {assessment.suggestions?.map((s, i) => (
+                <Bullet key={`t${i}`} icon="sparkles" color={C.amber} text={s} />
+              ))}
             </>
           ) : (
             <Text style={flowStyles.bodyText}>
@@ -190,6 +194,25 @@ export default function WritingResultScreen() {
               {showOcr ? <Text style={styles.ocrText}>{attempt.originalOcr}</Text> : null}
             </>
           ) : null}
+        </Card>
+      ) : null}
+
+      {hasScores && assessment?.correctedText && attempt.correctedText && assessment.correctedText !== attempt.correctedText ? (
+        <Card>
+          <SectionTitle title={lang === "en" ? "Suggested Correction" : "ಸೂಚಿಸಿದ ತಿದ್ದುಪಡಿ"} />
+          <Text style={[styles.answerText, attempt.language === "Kannada" && { lineHeight: 26 }]}>
+            {diffWords(attempt.correctedText, assessment.correctedText).map((part, i) => (
+              <Text key={i} style={part.kind === "removed" ? styles.diffRemoved : part.kind === "added" ? styles.diffAdded : undefined}>
+                {i > 0 ? " " : ""}
+                {part.text}
+              </Text>
+            ))}
+          </Text>
+          <Text style={[flowStyles.muted, { marginTop: 8 }]}>
+            {lang === "en"
+              ? "Struck-out words are yours; green words are the suggested fix."
+              : "ಗೆರೆ ಹಾಕಿದ ಪದಗಳು ನಿಮ್ಮವು; ಹಸಿರು ಪದಗಳು ಸೂಚಿಸಿದ ತಿದ್ದುಪಡಿ."}
+          </Text>
         </Card>
       ) : null}
 
@@ -239,6 +262,8 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginBottom: 6 },
   bulletText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: "#164A3D" },
   answerText: { fontSize: 14, lineHeight: 22, color: "#1C3A30" },
+  diffRemoved: { color: C.red, textDecorationLine: "line-through" },
+  diffAdded: { color: "#047857", backgroundColor: C.mint, fontWeight: "700" },
   ocrToggle: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 },
   ocrText: {
     fontSize: 13,

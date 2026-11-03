@@ -1,4 +1,6 @@
 import type { AssessmentLanguage } from "@/constants/content";
+import { postJson } from "@/core/api/client";
+import { isServerConfigured } from "@/core/config";
 import type { ReadingAnalysis } from "@/features/reading/analyzer";
 import type { WritingMetrics } from "@/features/writing/metrics";
 import { normalizeWord, tokenize } from "@/features/reading/analyzer";
@@ -7,6 +9,10 @@ export interface AiFeedback {
   summary: string;
   strengths: string[];
   improvements: string[];
+  /** Concrete next-step tips ("Read one page aloud every evening"). Absent on older records. */
+  suggestions?: string[];
+  /** Words the model recommends practising; for reading these are pruned to words in the passage. */
+  practiceWords?: string[];
   modelVersion: string;
   promptVersion: string;
 }
@@ -18,24 +24,56 @@ export interface WritingAssessment extends AiFeedback {
   /** Overall score out of 10. */
   score: number;
   misspelled: string[];
+  /** Minimal grammar/spelling correction of the student's text. Never replaces `correctedText` on the attempt. */
+  correctedText?: string;
 }
 
 const STUB_MODEL = "local-stub";
 const STUB_PROMPT = "v0";
 
+export type ReadingFeedbackInput = Pick<
+  ReadingAnalysis,
+  "accuracy" | "wpm" | "omissions" | "practiceWords"
+> & { pace: string; referenceText?: string; transcript?: string };
+
 /**
  * Qualitative reading feedback. Metrics are computed on-device; the model only
  * writes feedback around them.
  *
- * STUB for `POST /ai/reading-feedback`. Generates rule-based feedback locally so
- * the result screen is complete offline and before the backend exists.
+ * With a server configured this calls `POST /ai/reading-feedback` (Gemini runs on
+ * the backend) and throws on failure, so the attempt stays `failed` and is retried
+ * when the phone is back online. Without a server it uses local rule-based feedback.
  */
-export type ReadingFeedbackInput = Pick<
-  ReadingAnalysis,
-  "accuracy" | "wpm" | "omissions" | "practiceWords"
-> & { pace: string };
-
 export async function requestReadingFeedback(
+  analysis: ReadingFeedbackInput,
+  language: AssessmentLanguage
+): Promise<AiFeedback> {
+  if (!isServerConfigured()) return localReadingFeedback(analysis, language);
+
+  const res = await postJson<RemoteFeedback>("/ai/reading-feedback", {
+    language,
+    reference_text: analysis.referenceText ?? "",
+    transcript: analysis.transcript ?? "",
+    metrics: {
+      accuracy: analysis.accuracy,
+      wpm: analysis.wpm,
+      pace: analysis.pace,
+      omissions: analysis.omissions,
+      practice_words: analysis.practiceWords,
+    },
+  });
+  const feedback = fromRemote(res);
+  // The model may suggest words that aren't in the passage; keep only passage words
+  // and fall back to the on-device list (as the client's Kannada prompt did).
+  if (analysis.referenceText) {
+    const vocab = new Set(tokenize(analysis.referenceText).map(normalizeWord));
+    const kept = (feedback.practiceWords ?? []).filter((w) => vocab.has(normalizeWord(w)));
+    feedback.practiceWords = (kept.length > 0 ? kept : analysis.practiceWords).slice(0, 10);
+  }
+  return feedback;
+}
+
+async function localReadingFeedback(
   analysis: ReadingFeedbackInput,
   language: AssessmentLanguage
 ): Promise<AiFeedback> {
@@ -82,10 +120,40 @@ const COMMON_MISSPELLINGS = new Set([
 /**
  * Writing assessment: grammar, vocabulary, spelling scores plus feedback.
  *
- * STUB for `POST /ai/writing-assessment`. Uses simple heuristics so the flow
- * works end to end; the backend model will replace these scores.
+ * With a server configured this calls `POST /ai/writing-assessment` and throws on
+ * failure (retried later). Without a server it uses local heuristics.
  */
 export async function requestWritingAssessment(
+  text: string,
+  metrics: WritingMetrics,
+  language: AssessmentLanguage,
+  minWords: number
+): Promise<WritingAssessment> {
+  if (!isServerConfigured()) return localWritingAssessment(text, metrics, language, minWords);
+
+  const res = await postJson<RemoteWritingAssessment>("/ai/writing-assessment", {
+    language,
+    text,
+    min_words: minWords,
+    metrics: {
+      word_count: metrics.wordCount,
+      sentence_count: metrics.sentenceCount,
+    },
+  });
+  const base = fromRemote(res);
+  const score = num(res.score, "score");
+  return {
+    ...base,
+    grammarScore: clamp(num(res.grammar_score, "grammar_score")),
+    vocabularyScore: clamp(num(res.vocabulary_score, "vocabulary_score")),
+    spellingScore: clamp(num(res.spelling_score, "spelling_score")),
+    score: Math.max(0, Math.min(10, score)),
+    misspelled: strings(res.misspelled),
+    correctedText: typeof res.corrected === "string" ? res.corrected : undefined,
+  };
+}
+
+async function localWritingAssessment(
   text: string,
   metrics: WritingMetrics,
   language: AssessmentLanguage,
@@ -155,3 +223,49 @@ export async function requestWritingAssessment(
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+/**
+ * Backend response shape. Keys match the structured-output schema used by the
+ * client's Gemini prompts (working_well / needs_improvement / suggestions).
+ */
+interface RemoteFeedback {
+  summary?: unknown;
+  working_well?: unknown;
+  needs_improvement?: unknown;
+  suggestions?: unknown;
+  practice_words?: unknown;
+  model_version?: unknown;
+  prompt_version?: unknown;
+}
+
+interface RemoteWritingAssessment extends RemoteFeedback {
+  corrected?: unknown;
+  grammar_score?: unknown;
+  vocabulary_score?: unknown;
+  spelling_score?: unknown;
+  score?: unknown;
+  misspelled?: unknown;
+}
+
+function fromRemote(res: RemoteFeedback): AiFeedback {
+  if (typeof res.model_version !== "string" || typeof res.prompt_version !== "string") {
+    throw new Error("AI response is missing model_version/prompt_version");
+  }
+  return {
+    summary: typeof res.summary === "string" ? res.summary : "",
+    strengths: strings(res.working_well),
+    improvements: strings(res.needs_improvement),
+    suggestions: strings(res.suggestions),
+    practiceWords: strings(res.practice_words),
+    modelVersion: res.model_version,
+    promptVersion: res.prompt_version,
+  };
+}
+
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
+
+function num(v: unknown, key: string): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`AI response has invalid ${key}`);
+  return v;
+}
