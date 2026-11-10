@@ -1,26 +1,45 @@
-export type Language = 'English' | 'Kannada';
+// Shapes returned by the VGyan backend (backend/app/api/teacher.py).
 
-export interface Teacher {
-  id: string;
-  name: string;
-  email: string;
-  school: string;
-  assignedClasses: ClassGroup[];
-}
+export type Language = 'English' | 'Kannada';
+export type Role = 'teacher' | 'researcher' | 'admin';
 
 export interface ClassGroup {
   id: string;
   name: string;
   grade: number;
   section: string;
+  joinCode: string;
+  school: string;
   studentCount: number;
 }
 
-export interface WordError {
-  word: string;
-  type: 'substitution' | 'omission' | 'insertion' | 'repetition';
-  spoken?: string;
-  timestamp?: number;
+export interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  school: string;
+  assignedClasses: ClassGroup[];
+}
+
+export type WordStatus = 'correct' | 'substitution' | 'omission' | 'insertion';
+
+export interface AlignedWord {
+  status: WordStatus;
+  ref?: string;
+  hyp?: string;
+}
+
+export interface AiFeedback {
+  summary?: string;
+  strengths?: string[];
+  improvements?: string[];
+  suggestions?: string[];
+  practiceWords?: string[];
+  misspelled?: string[];
+  correctedText?: string;
+  modelVersion?: string;
+  promptVersion?: string;
 }
 
 export interface ReadingAssessment {
@@ -29,15 +48,31 @@ export interface ReadingAssessment {
   studentId: string;
   studentName: string;
   date: string;
+  passageId: string;
   passageTitle: string;
   language: Language;
   level: 'Easy' | 'Medium' | 'Advanced';
-  accuracy: number; // percentage
+  accuracy: number;
   wpm: number;
+  wcpm: number;
+  pace: string;
   durationSeconds: number;
-  audioDurationSeconds: number;
-  errors: WordError[];
-  aiQualitativeFeedback: string;
+  substitutions: number;
+  omissions: number;
+  insertions: number;
+  referenceText: string;
+  transcript: string;
+  words: AlignedWord[];
+  practiceWords: string[];
+  fluency: Record<string, unknown> | null;
+  asrModelVersion: string;
+  asrConfidence: number | null;
+  metricsVerified: boolean | null;
+  hasAudio: boolean;
+  aiStatus: string;
+  aiFeedback: AiFeedback | null;
+  aiModelVersion: string | null;
+  aiPromptVersion: string | null;
 }
 
 export interface WritingAssessment {
@@ -46,43 +81,62 @@ export interface WritingAssessment {
   studentId: string;
   studentName: string;
   date: string;
+  promptId: string;
   promptTitle: string;
   language: Language;
-  mode: 'typed' | 'handwritten_photo';
-  rawOcrText?: string;
+  inputMethod: 'typed' | 'camera' | 'gallery';
+  rawOcrText: string | null;
+  ocrConfidence: number | null;
+  ocrEngineVersion: string | null;
+  ocrMatchesServer: boolean | null;
   studentCorrectedText: string;
-  imageUrl?: string;
+  hasImage: boolean;
   wordCount: number;
+  sentenceCount: number;
   spellingErrorsCount: number;
-  grammarScore: number; // 0 - 100
-  aiFeedback: string;
+  score: number | null;
+  grammarScore: number | null;
+  vocabularyScore: number | null;
+  spellingScore: number | null;
+  aiStatus: string;
+  aiFeedback: AiFeedback | null;
+  aiModelVersion: string | null;
+  aiPromptVersion: string | null;
+}
+
+export interface StudentProfileInfo {
+  grade?: string;
+  section?: string;
+  school?: string;
+  schoolType?: string;
+  medium?: string;
+  nativeLanguage?: string;
+  otherLanguages?: string;
+  ageGroup?: string;
+  gender?: string;
 }
 
 export interface Student {
   studentId: string;
-  participantId: string; // Anonymous research identifier
+  participantId: string;
   name: string;
-  classId: string;
-  grade: number;
-  section: string;
-  age: number;
-  nativeLanguage: 'Kannada' | 'Tamil' | 'Telugu' | 'Hindi' | 'Urdu';
+  classId: string | null;
+  className: string | null;
+  profile: StudentProfileInfo;
   consentStatus: 'active' | 'withdrawn' | 'pending';
-  lastAssessmentDate: string;
-  overallReadingAccuracy: number;
-  averageWpm: number;
-  writingScore: number;
-  isAtRisk: boolean; // < 75% accuracy
-  atRiskReason?: string;
+  consentVersion: string | null;
+  consentCurrent: boolean;
+  lastAssessmentDate: string | null;
+  readingCount: number;
+  writingCount: number;
+  overallReadingAccuracy: number | null;
+  averageWpm: number | null;
+  /** Average AI writing score, 0-10. */
+  writingScore: number | null;
+  isAtRisk: boolean;
+  atRiskReason: string | null;
   recentReadingAttempts: ReadingAssessment[];
   recentWritingAttempts: WritingAssessment[];
-  radarSkills: {
-    fluency: number;
-    pronunciation: number;
-    vocabulary: number;
-    sentenceStructure: number;
-    consistency: number;
-  };
 }
 
 export interface MissedWord {
@@ -94,12 +148,80 @@ export interface MissedWord {
   affectedStudentsCount: number;
 }
 
+export type CommentCategory = 'Intervention' | 'Praise' | 'Parent Note' | 'General';
+
 export interface TeacherComment {
   id: string;
   studentId: string;
   studentName: string;
   author: string;
   text: string;
-  category: 'Intervention' | 'Praise' | 'Parent Note' | 'General';
+  category: CommentCategory;
   timestamp: string;
+}
+
+export interface Analytics {
+  students: number;
+  weekly: {
+    week: string;
+    readingCount: number;
+    writingCount: number;
+    avgAccuracy: number | null;
+    avgWpm: number | null;
+    avgWritingScore: number | null;
+  }[];
+  byLanguageLevel: {
+    language: Language;
+    level: string;
+    attempts: number;
+    avgAccuracy: number | null;
+    avgWpm: number | null;
+    avgSubstitutions: number | null;
+    avgOmissions: number | null;
+    avgInsertions: number | null;
+  }[];
+  completion: {
+    readingAny?: number;
+    writingAny?: number;
+    both?: number;
+    englishReading?: number;
+    kannadaReading?: number;
+    none?: number;
+  };
+  unverifiedMetrics?: number;
+}
+
+export interface Passage {
+  id: string;
+  kind: 'reading' | 'writing';
+  language: Language;
+  level: 'Easy' | 'Medium' | 'Advanced' | null;
+  title: string;
+  kannadaTitle: string;
+  text: string;
+  kannadaText: string;
+  minWords: number | null;
+  hint: string;
+  kannadaHint: string;
+  version: number;
+  isActive: boolean;
+  updatedAt: string;
+}
+
+export interface Assignment {
+  id: string;
+  passageId: string;
+  classId: string;
+  dueAt: string | null;
+  createdAt: string;
+}
+
+export interface ResearchSummary {
+  consentedParticipants: number;
+  readingAttempts: number;
+  writingAttempts: number;
+  readingWithAudio: number;
+  readingMetricsUnverified: number;
+  writingFromImage: number;
+  byLanguage: Record<Language, { reading: number; writing: number }>;
 }

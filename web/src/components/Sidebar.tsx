@@ -9,6 +9,9 @@ import {
   MessageSquare,
   Download,
   School,
+  Library,
+  Settings,
+  LogOut,
 } from 'lucide-react';
 import { Teacher, ClassGroup } from '../types';
 
@@ -19,17 +22,19 @@ export type NavTab =
   | 'reading'
   | 'writing'
   | 'missed-words'
-  | 'comments';
+  | 'comments'
+  | 'passages'
+  | 'research'
+  | 'admin';
 
 interface SidebarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   teacher: Teacher;
-  selectedClass: ClassGroup;
+  selectedClass: ClassGroup | null;
   onSelectClass: (c: ClassGroup) => void;
   atRiskCount: number;
-  onOpenExport: () => void;
-  onLogout?: () => void;
+  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,9 +44,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedClass,
   onSelectClass,
   atRiskCount,
-  onOpenExport,
+  onLogout,
 }) => {
-  const navItems = [
+  const classItems = [
     { id: 'overview' as NavTab, label: 'Class Overview', icon: LayoutDashboard },
     {
       id: 'at-risk' as NavTab,
@@ -54,7 +59,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reading' as NavTab, label: 'Reading Assessments', icon: BookOpen },
     { id: 'writing' as NavTab, label: 'Writing Submissions', icon: PenTool },
     { id: 'missed-words' as NavTab, label: 'Missed Words & Phonetics', icon: FileText },
-    { id: 'comments' as NavTab, label: 'Teacher Comments', icon: MessageSquare },
+    { id: 'comments' as NavTab, label: 'Teacher Notes', icon: MessageSquare },
+    { id: 'passages' as NavTab, label: 'Passages & Assignments', icon: Library },
+  ];
+  const navItems: { id: NavTab; label: string; icon: typeof Users; badge?: string; badgeVariant?: string }[] = [
+    ...(teacher.role !== 'researcher' && selectedClass ? classItems : []),
+    ...(teacher.role !== 'teacher' ? [{ id: 'research' as NavTab, label: 'Research Export', icon: Download }] : []),
+    ...(teacher.role === 'admin' ? [{ id: 'admin' as NavTab, label: 'Administration', icon: Settings }] : []),
   ];
 
   return (
@@ -66,11 +77,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div>
           <h1 style={styles.brandTitle}>VGyan Portal</h1>
-          <p style={styles.brandSubtitle}>Teacher & Class Analytics</p>
+          <p style={styles.brandSubtitle}>{teacher.role === 'admin' ? 'Administrator' : teacher.role === 'researcher' ? 'Researcher' : 'Teacher & Class Analytics'}</p>
         </div>
       </div>
 
       {/* Class Switcher Dropdown Box */}
+      {selectedClass && (
       <div style={styles.classSwitcherCard}>
         <div style={styles.classCardHeader}>
           <School size={15} color="var(--color-mint-teal)" />
@@ -91,8 +103,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </option>
           ))}
         </select>
-        <div style={styles.schoolTag}>{teacher.school}</div>
+        <div style={styles.schoolTag}>{selectedClass.school}</div>
       </div>
+      )}
 
       {/* Navigation List */}
       <nav style={styles.navList}>
@@ -143,15 +156,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Research Privacy & Export Action (SRS Page 7 & 9 compliant) */}
-      <div style={styles.exportSection}>
-        <button onClick={onOpenExport} style={styles.exportButton}>
-          <Download size={16} color="var(--color-deep-forest)" />
-          <span style={styles.exportLabel}>Anonymized Export</span>
-        </button>
-        <span style={styles.exportHelper}>Exports research data by Participant ID</span>
-      </div>
-
       {/* Teacher Footer Info */}
       <div style={styles.footer}>
         <div style={styles.teacherAvatar}>
@@ -165,6 +169,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div style={styles.teacherName}>{teacher.name}</div>
           <div style={styles.teacherEmail}>{teacher.email}</div>
         </div>
+        <button onClick={onLogout} title="Sign out" aria-label="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+          <LogOut size={16} color="var(--color-slate-500)" />
+        </button>
       </div>
     </aside>
   );
