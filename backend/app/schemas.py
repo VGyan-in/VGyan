@@ -158,15 +158,18 @@ class ReadingRecordIn(CamelModel):
     duration_sec: float = Field(ge=0, le=3600)
     asr_confidence: float | None = None
     asr_model_version: str = Field(default="", max_length=80)
+    asr_status: Literal["completed", "pending"] = "completed"
+    asr_ms: int | None = Field(default=None, ge=0)
     analysis_version: str = Field(default="", max_length=40)
-    accuracy: float = Field(ge=0, le=100)
-    wpm: float = Field(ge=0)
-    wcpm: float = Field(default=0, ge=0)
+    # Required when asr_status is "completed" (checked in the sync endpoint); null while pending.
+    accuracy: float | None = Field(default=None, ge=0, le=100)
+    wpm: float | None = Field(default=None, ge=0)
+    wcpm: float | None = Field(default=None, ge=0)
     pace: str = Field(default="", max_length=20)
-    mistakes_count: int = Field(default=0, ge=0)
-    substitutions: int = Field(ge=0)
-    omissions: int = Field(ge=0)
-    insertions: int = Field(ge=0)
+    mistakes_count: int | None = Field(default=None, ge=0)
+    substitutions: int | None = Field(default=None, ge=0)
+    omissions: int | None = Field(default=None, ge=0)
+    insertions: int | None = Field(default=None, ge=0)
     practice_words: list[str] = []
     words: list[AlignedWordIn] = []
     fluency: dict | None = None

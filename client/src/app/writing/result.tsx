@@ -16,9 +16,7 @@ import {
   flowStyles,
 } from "@/components/flow-ui";
 import { getWritingPrompt, languageLabel } from "@/constants/content";
-import { requestWritingAssessment } from "@/features/feedback/ai";
 import { diffWords } from "@/features/writing/diff";
-import { computeWritingMetrics } from "@/features/writing/metrics";
 import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
 import { attemptDate } from "@/utils/format";
@@ -26,7 +24,7 @@ import { attemptDate } from "@/utils/format";
 export default function WritingResultScreen() {
   const router = useRouter();
   const goHome = useGoHome();
-  const { lang, writingAttempts, updateWritingAttempt } = useApp();
+  const { lang, writingAttempts, requestWritingAssessmentFor } = useApp();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const attempt = writingAttempts.find((a) => a.id === id);
   const [showOcr, setShowOcr] = useState(false);
@@ -41,21 +39,9 @@ export default function WritingResultScreen() {
   const hasScores = !pending && !failed;
 
   const retry = async () => {
-    if (!attempt.correctedText) return;
     setRetrying(true);
     try {
-      const metrics = computeWritingMetrics(attempt.correctedText, attempt.language);
-      const a = await requestWritingAssessment(attempt.correctedText, metrics, attempt.language, prompt?.minWords ?? 40);
-      updateWritingAttempt(attempt.id, {
-        assessment: a,
-        aiStatus: "completed",
-        score: a.score,
-        grammarScore: a.grammarScore,
-        vocabularyScore: a.vocabularyScore,
-        spellingScore: a.spellingScore,
-      });
-    } catch {
-      updateWritingAttempt(attempt.id, { aiStatus: "failed" });
+      await requestWritingAssessmentFor(attempt.id);
     } finally {
       setRetrying(false);
     }

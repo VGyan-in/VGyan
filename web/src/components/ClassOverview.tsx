@@ -152,6 +152,9 @@ export const ClassOverview: React.FC<Props> = ({ students, classId, onNavigateTa
               <Metric label="English reading" value={analytics.completion.englishReading ?? 0} />
               <Metric label="Kannada reading" value={analytics.completion.kannadaReading ?? 0} />
               <Metric label="Nothing yet" value={analytics.completion.none ?? 0} />
+              {(analytics.pendingTranscriptions ?? 0) > 0 && (
+                <Metric label="Awaiting transcription" value={analytics.pendingTranscriptions} hint="Recorded before a speech model was installed" />
+              )}
               {(analytics.unverifiedMetrics ?? 0) > 0 && (
                 <Metric label="Metrics not verified" value={analytics.unverifiedMetrics} hint="Server recalculation disagreed" tone="risk" />
               )}

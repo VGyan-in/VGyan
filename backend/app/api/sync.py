@@ -214,24 +214,37 @@ def sync_reading(
         "transcript": rec.transcript,
         "duration_sec": rec.duration_sec,
     }
-    check = verify_reading_metrics(
-        rec.reference_text,
-        rec.transcript,
-        rec.duration_sec,
-        {
-            "accuracy": rec.accuracy,
-            "wpm": rec.wpm,
-            "substitutions": rec.substitutions,
-            "omissions": rec.omissions,
-            "insertions": rec.insertions,
-        },
+    pending = rec.asr_status == "pending"
+    if not pending and None in (rec.accuracy, rec.wpm, rec.substitutions, rec.omissions, rec.insertions):
+        raise ApiError(422, "invalid_record", "Completed readings need accuracy, wpm and error counts")
+    if existing and existing.asr_status == "completed" and pending:
+        raise ApiError(422, "immutable_field_changed", "A transcribed reading cannot go back to pending")
+    check = (
+        None
+        if pending
+        else verify_reading_metrics(
+            rec.reference_text,
+            rec.transcript,
+            rec.duration_sec,
+            {
+                "accuracy": rec.accuracy,
+                "wpm": rec.wpm,
+                "substitutions": rec.substitutions,
+                "omissions": rec.omissions,
+                "insertions": rec.insertions,
+            },
+        )
     )
     session_id = _upsert_session(db, student, rec.session) or (
         rec.session_id if rec.session_id and db.get(DeviceSession, rec.session_id) else None
     )
 
     if existing:
-        _check_immutable(existing, values, READING_IMMUTABLE)
+        # While transcription was pending the transcript was empty; the first transcript is accepted once.
+        fields = READING_IMMUTABLE if existing.asr_status == "completed" else tuple(f for f in READING_IMMUTABLE if f != "transcript")
+        _check_immutable(existing, values, fields)
+        if existing.asr_status == "pending":
+            existing.transcript = rec.transcript
         a = existing
         status = "updated"
         revision = a.revision + 1
@@ -257,8 +270,10 @@ def sync_reading(
     a.insertions = rec.insertions
     a.practice_words = rec.practice_words
     a.fluency = rec.fluency
-    a.analysis_version = rec.analysis_version or ANALYSIS_VERSION
-    a.metrics_verified = check["verified"]
+    a.asr_status = rec.asr_status
+    a.asr_ms = rec.asr_ms
+    a.analysis_version = "" if pending else (rec.analysis_version or ANALYSIS_VERSION)
+    a.metrics_verified = None if check is None else check["verified"]
     a.metrics_check = check
     a.ai_status = rec.ai_status
     if rec.feedback:

@@ -197,6 +197,8 @@ class ReadingAttempt(Base):
     __table_args__ = (
         CheckConstraint("language in ('English','Kannada')", name="ck_reading_language"),
         CheckConstraint("accuracy >= 0 and accuracy <= 100", name="ck_reading_accuracy"),
+        CheckConstraint("asr_status in ('completed','pending')", name="ck_reading_asr_status"),
+        CheckConstraint("asr_status = 'pending' or accuracy is not null", name="ck_reading_metrics_when_completed"),
         Index("ix_reading_student_created", "student_id", "client_created_at"),
     )
 
@@ -213,16 +215,20 @@ class ReadingAttempt(Base):
     asr_words: Mapped[list | None] = mapped_column(JSONB)
     asr_confidence: Mapped[float | None] = mapped_column(Float)
     asr_model_version: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    # "pending": recorded without an installed speech model. Audio is kept; metrics stay NULL until
+    # the phone transcribes it and sends the completed revision. Pending rows are excluded from analytics.
+    asr_status: Mapped[str] = mapped_column(String(12), nullable=False, default="completed", server_default="completed")
+    asr_ms: Mapped[int | None] = mapped_column(Integer)
     aligned_words: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     duration_sec: Mapped[float] = mapped_column(Float, nullable=False)
-    accuracy: Mapped[float] = mapped_column(Float, nullable=False)
-    wpm: Mapped[float] = mapped_column(Float, nullable=False)
-    wcpm: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    accuracy: Mapped[float | None] = mapped_column(Float)
+    wpm: Mapped[float | None] = mapped_column(Float)
+    wcpm: Mapped[float | None] = mapped_column(Float)
     pace: Mapped[str] = mapped_column(String(20), nullable=False, default="")
-    mistakes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    substitutions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    omissions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    insertions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    mistakes: Mapped[int | None] = mapped_column(Integer)
+    substitutions: Mapped[int | None] = mapped_column(Integer)
+    omissions: Mapped[int | None] = mapped_column(Integer)
+    insertions: Mapped[int | None] = mapped_column(Integer)
     practice_words: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     fluency: Mapped[dict | None] = mapped_column(JSONB)
     analysis_version: Mapped[str] = mapped_column(String(40), nullable=False, default="")

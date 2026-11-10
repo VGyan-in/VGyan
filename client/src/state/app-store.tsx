@@ -13,15 +13,20 @@ import * as Network from "expo-network";
 import type { Lang } from "@/constants/content";
 import { config, isServerConfigured } from "@/core/config";
 import { hashPassword, newId, verifyPassword } from "@/core/auth/credentials";
-import { clearAuthToken, remoteLogin, remoteRegister } from "@/core/auth/remote";
+import { clearAuthToken, remoteLogin, remoteRegister, syncProfile } from "@/core/auth/remote";
 import { createRepository } from "@/core/db/repository";
 import type { Repository } from "@/core/db/types";
-import { deleteMedia, persistMedia } from "@/core/storage/files";
+import { deleteMedia, localMd5, persistMedia } from "@/core/storage/files";
 import { enqueue, processQueue, resetInterrupted, retryItem } from "@/core/sync/queue";
 import { createUploader } from "@/core/sync/uploader";
-import { requestReadingFeedback, requestWritingAssessment } from "@/features/feedback/ai";
-import { computeWritingMetrics } from "@/features/writing/metrics";
+import { isRetryableAiError, requestReadingFeedback, requestWritingAssessment } from "@/features/feedback/ai";
 import { getWritingPrompt } from "@/constants/content";
+import { transcribeFile } from "@/features/reading/asr";
+import { getModelState } from "@/features/reading/models";
+import { analyzeReading, ANALYSIS_VERSION } from "@/features/reading/analyzer";
+import { computeFluency } from "@/features/reading/fluency";
+import { acquireSyncLock, releaseSyncLock } from "@/core/sync/lock";
+
 import type {
   ConsentRecord,
   ReadingAttempt,
@@ -39,6 +44,8 @@ export interface WritingDraft {
   imageUri: string | null;
   originalOcr: string | null;
   ocrConfidence: number | null;
+  ocrId?: string | null;
+  ocrEngineVersion?: string | null;
   text: string;
 }
 
@@ -47,6 +54,8 @@ export interface RegisterInput {
   email: string;
   participantId: string;
   password: string;
+  /** Class join code from the teacher; links the student to the teacher's dashboard. */
+  classCode?: string;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -90,6 +99,9 @@ interface AppStateValue {
   updateReadingAttempt: (id: string, patch: Partial<ReadingAttempt>) => Promise<void>;
   saveNewWriting: (a: NewWriting) => Promise<WritingAttempt>;
   updateWritingAttempt: (id: string, patch: Partial<WritingAttempt>) => Promise<void>;
+  /** Requests AI feedback for a saved attempt; false if it must wait (offline etc.). */
+  requestFeedbackFor: (id: string) => Promise<boolean>;
+  requestWritingAssessmentFor: (id: string) => Promise<boolean>;
 
   writingDraft: WritingDraft | null;
   setWritingDraft: (d: WritingDraft | null) => void;
@@ -230,30 +242,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ---------- Sync worker ----------
 
-  const retryPendingFeedback = useCallback(async () => {
-    if (!profile) return;
-    for (const a of await repo.listReading(profile.participantId)) {
-      if (a.aiStatus !== "failed") continue;
+  const readingFeedback = useCallback(
+    async (id: string): Promise<boolean> => {
+      const a = await repo.getReading(id);
+      if (!a || a.asrStatus === "pending") return false;
       try {
-        const feedback = await requestReadingFeedback(a, a.language);
-        const next = { ...a, feedback, aiStatus: "completed" as const, synced: false };
+        const feedback = await requestReadingFeedback(
+          { ...a, attemptId: a.id, level: a.level, referenceText: a.referenceText, transcript: a.transcript },
+          a.language
+        );
+        const next: ReadingAttempt = { ...a, feedback, aiStatus: "completed", synced: false };
         await repo.saveReading(next);
         await enqueue(repo, "reading", a.id, a.participantId, newId);
         setReadingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
-      } catch {
-        // Stays failed; retried on the next sync.
+        return true;
+      } catch (e) {
+        const status = isRetryableAiError(e) ? "pending" : "failed";
+        if (a.aiStatus !== status) {
+          const next: ReadingAttempt = { ...a, aiStatus: status };
+          await repo.saveReading(next);
+          setReadingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
+        }
+        return false;
       }
-    }
-    for (const a of await repo.listWriting(profile.participantId)) {
-      if (a.aiStatus !== "failed") continue;
+    },
+    [repo]
+  );
+
+  const writingFeedback = useCallback(
+    async (id: string): Promise<boolean> => {
+      const a = await repo.getWriting(id);
+      if (!a) return false;
       const prompt = getWritingPrompt(a.promptId);
       try {
-        const assessment = await requestWritingAssessment(
-          a.correctedText,
-          computeWritingMetrics(a.correctedText, a.language),
-          a.language,
-          prompt?.minWords ?? 40
-        );
+        const assessment = await requestWritingAssessment({
+          attemptId: a.id,
+          text: a.correctedText,
+          language: a.language,
+          prompt: a.prompt,
+          minWords: prompt?.minWords ?? 40,
+          grade: profile?.grade ?? "",
+        });
         const next: WritingAttempt = {
           ...a,
           assessment,
@@ -267,11 +296,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await repo.saveWriting(next);
         await enqueue(repo, "writing", a.id, a.participantId, newId);
         setWritingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
-      } catch {
-        // Stays failed; retried on the next sync.
+        return true;
+      } catch (e) {
+        const status = isRetryableAiError(e) ? "pending" : "failed";
+        if (a.aiStatus !== status) {
+          const next: WritingAttempt = { ...a, aiStatus: status };
+          await repo.saveWriting(next);
+          setWritingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
+        }
+        return false;
+      }
+    },
+    [repo, profile]
+  );
+
+  /** Recordings saved while no speech model was installed are transcribed once one is. */
+  const processPendingTranscriptions = useCallback(async () => {
+    if (!profile) return;
+    for (const a of await repo.listReading(profile.participantId)) {
+      if (a.asrStatus !== "pending" || !a.audioUri || getModelState(a.language).status !== "ready") continue;
+      try {
+        const asr = await transcribeFile(a.audioUri, a.language);
+        const durationMs = a.durationSec * 1000;
+        const an = analyzeReading(a.referenceText, asr.transcript, durationMs, a.language);
+        const next: ReadingAttempt = {
+          ...a,
+          asrStatus: "completed",
+          transcript: asr.transcript,
+          asrConfidence: asr.confidence,
+          asrModelVersion: asr.modelVersion,
+          asrWords: asr.words,
+          asrMs: asr.asrMs,
+          analysisVersion: ANALYSIS_VERSION,
+          accuracy: an.accuracy,
+          wpm: an.wpm,
+          wcpm: an.wcpm,
+          pace: an.pace,
+          mistakesCount: an.mistakes,
+          substitutions: an.substitutions,
+          omissions: an.omissions,
+          insertions: an.insertions,
+          practiceWords: an.practiceWords,
+          words: an.words,
+          fluency: asr.words.length > 0 ? computeFluency(asr.words) ?? undefined : undefined,
+          synced: false,
+        };
+        await repo.saveReading(next);
+        await enqueue(repo, "reading", a.id, a.participantId, newId);
+        setReadingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
+      } catch (e) {
+        console.warn("pending transcription failed", e instanceof Error ? e.message : e);
       }
     }
   }, [repo, profile]);
+
+  const retryPendingFeedback = useCallback(async () => {
+    if (!profile || !isServerConfigured()) return;
+    for (const a of await repo.listReading(profile.participantId)) {
+      if (a.asrStatus !== "pending" && a.aiStatus !== "completed") await readingFeedback(a.id);
+    }
+    for (const a of await repo.listWriting(profile.participantId)) {
+      if (a.aiStatus !== "completed") await writingFeedback(a.id);
+    }
+  }, [repo, profile, readingFeedback, writingFeedback]);
 
   const markSynced = useCallback(
     async (item: SyncItem) => {
@@ -279,7 +366,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const a = await repo.getReading(item.entityId);
         if (!a) return;
         let audioUri = a.audioUri;
-        if (config.purgeMediaAfterSync && isServerConfigured()) {
+        if (config.purgeMediaAfterSync && isServerConfigured() && a.serverFileMd5 && localMd5(audioUri) === a.serverFileMd5) {
           deleteMedia(audioUri);
           audioUri = null;
         }
@@ -290,7 +377,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const a = await repo.getWriting(item.entityId);
         if (!a) return;
         let imageUri = a.imageUri;
-        if (config.purgeMediaAfterSync && isServerConfigured()) {
+        if (config.purgeMediaAfterSync && isServerConfigured() && a.serverFileMd5 && localMd5(imageUri) === a.serverFileMd5) {
           deleteMedia(imageUri);
           imageUri = null;
         }
@@ -305,8 +392,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const runSync = useCallback(async () => {
     if (syncRunning.current) return { synced: 0, failed: 0, skipped: 0 };
     syncRunning.current = true;
+    // The background task may be uploading too; one runner at a time.
+    if (!(await acquireSyncLock(repo, "foreground"))) {
+      syncRunning.current = false;
+      return { synced: 0, failed: 0, skipped: 0 };
+    }
     setSync((s) => ({ ...s, isSyncing: true }));
     try {
+      await processPendingTranscriptions();
+      if (profile) await syncProfile(repo, profile).catch(() => {});
       await retryPendingFeedback();
       const result = await processQueue(repo, uploader, { maxRetries: config.syncMaxRetries });
       for (const item of result.synced) await markSynced(item);
@@ -331,9 +425,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSync((s) => ({ ...s, isSyncing: false, lastMessage: "some-failed" }));
       return { synced: 0, failed: 0, skipped: 0 };
     } finally {
+      await releaseSyncLock(repo, "foreground").catch(() => {});
       syncRunning.current = false;
     }
-  }, [repo, uploader, retryPendingFeedback, markSynced, refreshQueue]);
+  }, [repo, uploader, processPendingTranscriptions, retryPendingFeedback, markSynced, refreshQueue, profile]);
 
   const runSyncRef = useRef(runSync);
   useEffect(() => {
@@ -399,15 +494,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(
     async (input: RegisterInput): Promise<ActionResult> => {
       const email = input.email.trim().toLowerCase();
-      const participantId = input.participantId.trim().toUpperCase() || generateParticipantId();
+      const typed = input.participantId.trim().toUpperCase();
+      let participantId = typed || generateParticipantId();
       if (await repo.getProfile(participantId))
         return { ok: false, error: "participant-exists" };
       if (email && (await repo.findProfile(email))) return { ok: false, error: "email-exists" };
       // With a server, the account must exist there too or every upload would be rejected,
       // so registration needs a connection. Without one, the account is local only.
       if (isServerConfigured()) {
-        const remote = await remoteRegister({ participantId, fullName: input.fullName.trim(), email, password: input.password });
+        const remote = await remoteRegister({
+          participantId,
+          generated: !typed,
+          regenerate: generateParticipantId,
+          fullName: input.fullName.trim(),
+          email,
+          password: input.password,
+          classCode: input.classCode,
+        });
         if (!remote.ok) return remote;
+        participantId = remote.participantId;
       }
       const ts = new Date().toISOString();
       const p: StudentProfile = {
@@ -439,10 +544,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const stored = await repo.findProfile(identifier);
 
       if (isServerConfigured()) {
-        // The server knows students by participant ID; an email only resolves via this phone.
-        const participantId = stored?.profile.participantId ?? identifier.trim().toUpperCase();
-        const remote = await remoteLogin(participantId, password);
+        // The server accepts the participant ID or the registered e-mail.
+        const remote = await remoteLogin(stored?.profile.participantId ?? identifier.trim(), password);
         if (remote.ok) {
+          const participantId = remote.participantId;
           // Keep the local credential in step so the next offline sign-in works.
           const credential = await hashPassword(password);
           if (stored) {
@@ -501,7 +606,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!profile) return;
       const next = { ...profile, ...patch, participantId: profile.participantId, updatedAt: new Date().toISOString() };
       await repo.saveProfile(next);
+      await repo.setMeta(`profile.dirty.${profile.participantId}`, "1");
       setProfile(next);
+      void syncProfile(repo, next).catch(() => {});
     },
     [repo, profile]
   );
@@ -665,6 +772,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateReadingAttempt,
     saveNewWriting,
     updateWritingAttempt,
+    requestFeedbackFor: readingFeedback,
+    requestWritingAssessmentFor: writingFeedback,
     writingDraft,
     setWritingDraft,
     sync,

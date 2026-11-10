@@ -52,14 +52,16 @@ export interface ReadingAssessment {
   passageTitle: string;
   language: Language;
   level: 'Easy' | 'Medium' | 'Advanced';
-  accuracy: number;
-  wpm: number;
-  wcpm: number;
+  /** "pending": recorded without a speech model; metrics are null until the phone transcribes it. */
+  asrStatus: 'completed' | 'pending';
+  accuracy: number | null;
+  wpm: number | null;
+  wcpm: number | null;
   pace: string;
   durationSeconds: number;
-  substitutions: number;
-  omissions: number;
-  insertions: number;
+  substitutions: number | null;
+  omissions: number | null;
+  insertions: number | null;
   referenceText: string;
   transcript: string;
   words: AlignedWord[];
@@ -128,6 +130,7 @@ export interface Student {
   consentCurrent: boolean;
   lastAssessmentDate: string | null;
   readingCount: number;
+  pendingTranscriptions: number;
   writingCount: number;
   overallReadingAccuracy: number | null;
   averageWpm: number | null;
@@ -189,6 +192,7 @@ export interface Analytics {
     none?: number;
   };
   unverifiedMetrics?: number;
+  pendingTranscriptions?: number;
 }
 
 export interface Passage {
@@ -222,6 +226,7 @@ export interface ResearchSummary {
   writingAttempts: number;
   readingWithAudio: number;
   readingMetricsUnverified: number;
+  readingPendingTranscription: number;
   writingFromImage: number;
   byLanguage: Record<Language, { reading: number; writing: number }>;
 }

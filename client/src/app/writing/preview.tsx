@@ -4,7 +4,8 @@ import { Image } from "expo-image";
 import { Redirect, useRouter } from "expo-router";
 import { ButtonRow, C, FlowButton, FlowScreen, Notice } from "@/components/flow-ui";
 import { getWritingPrompt } from "@/constants/content";
-import { recognizeHandwriting } from "@/features/writing/ocr";
+import { OcrUnavailableError, recognizeHandwriting } from "@/features/writing/ocr";
+import { ApiError } from "@/core/api/client";
 import { useApp } from "@/state/app-store";
 
 export default function WritingPreviewScreen() {
@@ -25,15 +26,28 @@ export default function WritingPreviewScreen() {
         ...writingDraft,
         originalOcr: ocr.text,
         ocrConfidence: ocr.confidence,
+        ocrId: ocr.ocrId,
+        ocrEngineVersion: ocr.engineVersion,
         text: ocr.text,
       });
       router.push("/writing/ocr-correction");
     } catch (e) {
-      console.warn("OCR failed", e);
+      console.warn("OCR failed", e instanceof Error ? e.message : e);
+      const en = lang === "en";
+      const offline = e instanceof OcrUnavailableError || (e instanceof ApiError && e.status === null);
+      const noConsent = e instanceof ApiError && (e.code === "handwriting_consent_required" || e.status === 428);
       setError(
-        lang === "en"
-          ? "We couldn't read the text. Check your connection, or retake a clearer photo."
-          : "ಪಠ್ಯವನ್ನು ಓದಲಾಗಲಿಲ್ಲ. ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಸ್ಪಷ್ಟ ಫೋಟೋ ತೆಗೆಯಿರಿ."
+        noConsent
+          ? en
+            ? "Photos of handwriting need your guardian's consent. Please type your answer instead."
+            : "ಕೈಬರಹದ ಫೋಟೋಗೆ ಪೋಷಕರ ಒಪ್ಪಿಗೆ ಬೇಕು. ದಯವಿಟ್ಟು ಉತ್ತರವನ್ನು ಟೈಪ್ ಮಾಡಿ."
+          : offline
+          ? en
+            ? "Reading handwriting needs the internet. Connect and try again, or type your answer (typing works offline)."
+            : "ಕೈಬರಹ ಓದಲು ಇಂಟರ್ನೆಟ್ ಬೇಕು. ಸಂಪರ್ಕಿಸಿ ಅಥವಾ ಉತ್ತರವನ್ನು ಟೈಪ್ ಮಾಡಿ (ಟೈಪಿಂಗ್ ಆಫ್‌ಲೈನ್‌ನಲ್ಲೂ ಕೆಲಸ ಮಾಡುತ್ತದೆ)."
+          : en
+          ? "We couldn't read the text. Retake a clearer photo, or type your answer."
+          : "ಪಠ್ಯವನ್ನು ಓದಲಾಗಲಿಲ್ಲ. ಸ್ಪಷ್ಟ ಫೋಟೋ ತೆಗೆಯಿರಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ."
       );
     } finally {
       setBusy(false);

@@ -53,6 +53,7 @@ export const ResearchView: React.FC = () => {
           <Metric label="Reading attempts" value={summary.readingAttempts} hint={`${summary.readingWithAudio} with original audio`} />
           <Metric label="Writing attempts" value={summary.writingAttempts} hint={`${summary.writingFromImage} handwritten`} />
           <Metric label="English / Kannada reading" value={`${summary.byLanguage.English.reading} / ${summary.byLanguage.Kannada.reading}`} />
+          <Metric label="Awaiting transcription" value={summary.readingPendingTranscription} hint="Audio kept; no speech model yet" />
           <Metric
             label="Metrics not verified"
             value={summary.readingMetricsUnverified}

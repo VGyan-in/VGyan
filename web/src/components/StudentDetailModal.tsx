@@ -112,7 +112,8 @@ const ProgressTab: React.FC<{ student: Student }> = ({ student }) => {
     const out: Record<string, { date: string; accuracy: number; wpm: number }[]> = { English: [], Kannada: [] };
     [...student.recentReadingAttempts]
       .sort((a, b) => a.date.localeCompare(b.date))
-      .forEach((a) => out[a.language].push({ date: formatDate(a.date), accuracy: a.accuracy, wpm: a.wpm }));
+      .filter((a) => a.asrStatus !== 'pending' && a.accuracy != null)
+      .forEach((a) => out[a.language].push({ date: formatDate(a.date), accuracy: a.accuracy as number, wpm: a.wpm ?? 0 }));
     return out;
   }, [student]);
   const writing = useMemo(
@@ -124,7 +125,7 @@ const ProgressTab: React.FC<{ student: Student }> = ({ student }) => {
     [student],
   );
   const errorTotals = student.recentReadingAttempts.reduce(
-    (acc, a) => ({ s: acc.s + a.substitutions, o: acc.o + a.omissions, i: acc.i + a.insertions }),
+    (acc, a) => ({ s: acc.s + (a.substitutions ?? 0), o: acc.o + (a.omissions ?? 0), i: acc.i + (a.insertions ?? 0) }),
     { s: 0, o: 0, i: 0 },
   );
   const practice = Array.from(new Set(student.recentReadingAttempts.flatMap((a) => a.practiceWords))).slice(0, 20);
@@ -232,9 +233,7 @@ const ReadingTab: React.FC<{ attempts: ReadingAssessment[] }> = ({ attempts }) =
             <span className="badge badge-forest">{a.language}</span>
             <span className="badge badge-teal">{a.level}</span>
             <span style={styles.dateSub}>{formatDateTime(a.date)}</span>
-            <span style={styles.headMetric}>
-              {fmt(a.accuracy)}% · {fmt(a.wpm)} WPM
-            </span>
+            <span style={styles.headMetric}>{a.asrStatus === 'pending' ? 'Transcription pending' : `${fmt(a.accuracy)}% · ${fmt(a.wpm)} WPM`}</span>
           </button>
           {open === a.id && <ReadingDetail a={a} />}
         </div>
@@ -263,6 +262,11 @@ const ReadingDetail: React.FC<{ a: ReadingAssessment }> = ({ a }) => {
         <Stat label="Insertions" value={a.insertions} />
         <Stat label="Duration" value={`${Math.round(a.durationSeconds)}s`} />
       </div>
+      {a.asrStatus === 'pending' && (
+        <div style={styles.warn}>
+          <AlertTriangle size={14} /> Recorded without an installed speech model for {a.language}. The original audio is kept; metrics appear after the phone transcribes it.
+        </div>
+      )}
       {a.metricsVerified === false && (
         <div style={styles.warn}>
           <AlertTriangle size={14} /> The server's re-calculation from the transcript does not match the metrics the phone reported. Treat this attempt with caution.

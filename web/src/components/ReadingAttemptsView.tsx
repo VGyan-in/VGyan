@@ -63,7 +63,7 @@ export const ReadingAttemptsView: React.FC<{ students: Student[]; onSelectStuden
                       {a.language} · {a.level}
                     </td>
                     <td style={{ ...ui.td, fontWeight: 700 }}>
-                      {fmt(a.accuracy)}%
+                      {a.asrStatus === 'pending' ? <span style={ui.muted}>pending</span> : `${fmt(a.accuracy)}%`}
                       {a.metricsVerified === false && (
                         <span title="Server re-calculation disagrees with the phone">
                           {' '}
@@ -73,7 +73,7 @@ export const ReadingAttemptsView: React.FC<{ students: Student[]; onSelectStuden
                     </td>
                     <td style={ui.td}>{fmt(a.wpm)}</td>
                     <td style={ui.td}>
-                      {a.substitutions} / {a.omissions} / {a.insertions}
+                      {a.asrStatus === 'pending' ? '—' : `${a.substitutions} / ${a.omissions} / ${a.insertions}`}
                     </td>
                     <td style={{ ...ui.td, ...ui.muted }}>{a.asrModelVersion || '—'}</td>
                     <td style={ui.td}>{a.aiStatus}</td>

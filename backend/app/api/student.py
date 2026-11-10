@@ -135,6 +135,7 @@ def _reading_out(a: ReadingAttempt) -> dict:
         "language": a.language,
         "level": a.level,
         "createdAt": a.client_created_at.isoformat(),
+        "asrStatus": a.asr_status,
         "accuracy": a.accuracy,
         "wpm": a.wpm,
         "wcpm": a.wcpm,

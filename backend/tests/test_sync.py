@@ -184,3 +184,46 @@ def test_my_report_returns_synced_history(client):
     rep = client.get("/student/my_report", headers=h).json()
     assert len(rep["reading"]) == 1 and rep["reading"][0]["accuracy"] == 80
     assert rep["consent"]["status"] == "active"
+
+
+def test_pending_transcription_keeps_audio_then_accepts_first_transcript(client):
+    h = register(client)
+    give_consent(client, h)
+    audio = wav_bytes()
+    pending = reading_record(
+        language="Kannada",
+        transcript="",
+        asrStatus="pending",
+        accuracy=None,
+        wpm=None,
+        wcpm=None,
+        substitutions=None,
+        omissions=None,
+        insertions=None,
+        mistakesCount=None,
+        words=[],
+        practiceWords=[],
+    )
+    r = post_reading(client, h, pending, audio)
+    assert r.status_code == 200, r.text
+    assert r.json()["metrics_verified"] is None and r.json()["file_md5"] == hashlib.md5(audio).hexdigest()
+
+    # pending rows never show up in averages
+    rep = client.get("/student/my_report", headers=h).json()
+    assert rep["reading"][0]["asrStatus"] == "pending" and rep["reading"][0]["accuracy"] is None
+
+    # The phone transcribes it later: transcript may be set once, metrics are verified.
+    done = {**pending, **reading_record(rid=pending["id"], language="Kannada"), "asrStatus": "completed"}
+    r2 = post_reading(client, h, done)
+    assert r2.status_code == 200 and r2.json()["status"] == "updated" and r2.json()["metrics_verified"] is True
+
+    # ...but never changed again, and never back to pending
+    assert post_reading(client, h, {**done, "transcript": "The boy went"}).status_code == 422
+    assert post_reading(client, h, pending).status_code == 422
+
+
+def test_completed_reading_requires_metrics(client):
+    h = register(client)
+    give_consent(client, h)
+    r = post_reading(client, h, reading_record(accuracy=None))
+    assert r.status_code == 422

@@ -1,5 +1,5 @@
 import type { AlignedWord } from "@/features/reading/analyzer";
-import type { FluencyMetrics } from "@/features/reading/fluency";
+import type { AsrWord, FluencyMetrics } from "@/features/reading/fluency";
 import type { AiFeedback, WritingAssessment } from "@/features/feedback/ai";
 import type { AssessmentLanguage, Level } from "@/constants/content";
 
@@ -58,11 +58,18 @@ export interface ReadingAttempt {
   level: Level;
   createdAt: string;
   referenceText: string;
+  /** "pending" when no speech model was available: audio is kept, metrics are not yet computed. */
+  asrStatus: "completed" | "pending";
   transcript: string;
   audioUri: string | null;
   durationSec: number;
-  asrConfidence: number;
+  /** Mean Vosk word confidence; null when nothing was recognised. */
+  asrConfidence: number | null;
   asrModelVersion: string;
+  /** Per-word timings and confidences exactly as returned by the recogniser. */
+  asrWords?: AsrWord[];
+  asrMs?: number | null;
+  analysisVersion?: string;
   accuracy: number;
   wpm: number;
   wcpm: number;
@@ -78,6 +85,8 @@ export interface ReadingAttempt {
   aiStatus: AiStatus;
   feedback?: AiFeedback;
   synced: boolean;
+  /** Set once the server confirmed it holds this exact audio file (checked before any local purge). */
+  serverFileMd5?: string | null;
 }
 
 export interface WritingAttempt {
@@ -94,6 +103,9 @@ export interface WritingAttempt {
   /** Raw OCR output, never overwritten by the student's correction. */
   originalOcr: string | null;
   ocrConfidence: number | null;
+  /** Server-side OCR record, so the server can confirm originalOcr is what the engine returned. */
+  ocrId?: string | null;
+  ocrEngineVersion?: string | null;
   correctedText: string;
   wordCount: number;
   sentenceCount: number;
@@ -104,6 +116,7 @@ export interface WritingAttempt {
   aiStatus: AiStatus;
   assessment?: WritingAssessment;
   synced: boolean;
+  serverFileMd5?: string | null;
 }
 
 export type SyncEntityType = "reading" | "writing" | "consent";

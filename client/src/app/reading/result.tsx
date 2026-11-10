@@ -16,7 +16,6 @@ import {
 } from "@/components/flow-ui";
 import { languageLabel, levelLabel } from "@/constants/content";
 import type { AlignedWord } from "@/features/reading/analyzer";
-import { requestReadingFeedback } from "@/features/feedback/ai";
 import { useGoHome } from "@/hooks/use-go-home";
 import { useApp } from "@/state/app-store";
 import { attemptDate } from "@/utils/format";
@@ -24,7 +23,7 @@ import { attemptDate } from "@/utils/format";
 export default function ReadingResultScreen() {
   const router = useRouter();
   const goHome = useGoHome();
-  const { lang, readingAttempts, updateReadingAttempt } = useApp();
+  const { lang, readingAttempts, requestFeedbackFor } = useApp();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const attempt = readingAttempts.find((a) => a.id === id);
   const [retrying, setRetrying] = useState(false);
@@ -48,25 +47,40 @@ export default function ReadingResultScreen() {
   const retryFeedback = async () => {
     setRetrying(true);
     try {
-      const feedback = await requestReadingFeedback(
-        {
-          accuracy: attempt.accuracy,
-          wpm: attempt.wpm,
-          pace: attempt.pace,
-          omissions: attempt.omissions ?? 0,
-          practiceWords: attempt.practiceWords,
-          referenceText: attempt.referenceText,
-          transcript: attempt.transcript,
-        },
-        attempt.language
-      );
-      updateReadingAttempt(attempt.id, { feedback, aiStatus: "completed" });
-    } catch {
-      updateReadingAttempt(attempt.id, { aiStatus: "failed" });
+      await requestFeedbackFor(attempt.id);
     } finally {
       setRetrying(false);
     }
   };
+
+  if (attempt.asrStatus === "pending") {
+    const en = lang === "en";
+    return (
+      <FlowScreen
+        title={en ? "Recording Saved" : "ರೆಕಾರ್ಡಿಂಗ್ ಉಳಿಸಲಾಗಿದೆ"}
+        subtitle={en ? attempt.title : attempt.kannadaTitle}
+        onBack={() => goHome()}
+        footer={<FlowButton label={en ? "Done" : "ಮುಗಿದಿದೆ"} icon="check" onPress={() => goHome()} />}
+      >
+        <Notice
+          tone="info"
+          text={
+            en
+              ? "Your reading is saved on this phone. It will be checked automatically when the speech model for this language is available, and your teacher will see it after it syncs."
+              : "ನಿಮ್ಮ ಓದು ಈ ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ. ಈ ಭಾಷೆಯ ಧ್ವನಿ ಮಾದರಿ ಲಭ್ಯವಾದಾಗ ಅದನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ."
+          }
+        />
+        {attempt.audioUri ? (
+          <FlowButton
+            label={playerStatus.playing ? (en ? "Pause" : "ನಿಲ್ಲಿಸಿ") : en ? "Listen to my reading" : "ನನ್ನ ಓದನ್ನು ಕೇಳಿ"}
+            icon={playerStatus.playing ? "pause" : "play"}
+            variant="secondary"
+            onPress={togglePlayback}
+          />
+        ) : null}
+      </FlowScreen>
+    );
+  }
 
   const accuracyColor = attempt.accuracy >= 90 ? C.forest : attempt.accuracy >= 75 ? C.amber : C.red;
   const headline =

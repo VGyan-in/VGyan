@@ -105,6 +105,7 @@ def reading_out(a: ReadingAttempt, s: Student) -> dict:
         "words": a.aligned_words,
         "practiceWords": a.practice_words,
         "fluency": a.fluency,
+        "asrStatus": a.asr_status,
         "asrModelVersion": a.asr_model_version,
         "asrConfidence": a.asr_confidence,
         "metricsVerified": a.metrics_verified,
@@ -155,12 +156,14 @@ def _avg(xs: list[float]) -> float | None:
 def student_summary(
     s: Student, readings: list[ReadingAttempt], writings: list[WritingAttempt], consent: ConsentRecord | None, recent: int = 10
 ) -> dict:
-    readings = sorted(readings, key=lambda a: a.client_created_at, reverse=True)
+    all_readings = sorted(readings, key=lambda a: a.client_created_at, reverse=True)
+    # Metrics come from transcribed attempts only; pending recordings are listed but not averaged.
+    readings = [a for a in all_readings if a.asr_status == "completed"]
     writings = sorted(writings, key=lambda a: a.client_created_at, reverse=True)
     last3 = [a.accuracy for a in readings[:3]]
     avg3 = _avg(last3)
     at_risk = avg3 is not None and avg3 < AT_RISK_ACCURACY
-    dates = [a.client_created_at for a in readings[:1]] + [a.client_created_at for a in writings[:1]]
+    dates = [a.client_created_at for a in all_readings[:1]] + [a.client_created_at for a in writings[:1]]
     scores = [a.score for a in writings if a.score is not None]
     cfg = get_settings()
     return {
@@ -174,7 +177,8 @@ def student_summary(
         "consentVersion": consent.consent_version if consent else None,
         "consentCurrent": bool(consent and consent.status == "active" and consent.consent_version == cfg.consent_version),
         "lastAssessmentDate": max(dates).isoformat() if dates else None,
-        "readingCount": len(readings),
+        "readingCount": len(all_readings),
+        "pendingTranscriptions": len(all_readings) - len(readings),
         "writingCount": len(writings),
         "overallReadingAccuracy": _avg([a.accuracy for a in readings[:5]]),
         "averageWpm": _avg([a.wpm for a in readings[:5]]),
@@ -183,7 +187,7 @@ def student_summary(
         "atRiskReason": f"Average accuracy {avg3}% over the last {len(last3)} readings is below {AT_RISK_ACCURACY:.0f}%"
         if at_risk
         else None,
-        "recentReadingAttempts": [reading_out(a, s) for a in readings[:recent]],
+        "recentReadingAttempts": [reading_out(a, s) for a in all_readings[:recent]],
         "recentWritingAttempts": [writing_out(a, s) for a in writings[:recent]],
     }
 
@@ -293,7 +297,7 @@ def missed_words(
     ids = [s.id for s in db.scalars(q)]
     if not ids:
         return []
-    rq = select(ReadingAttempt).where(ReadingAttempt.student_id.in_(ids))
+    rq = select(ReadingAttempt).where(ReadingAttempt.student_id.in_(ids), ReadingAttempt.asr_status == "completed")
     if language:
         rq = rq.where(ReadingAttempt.language == language)
     freq: Counter = Counter()
@@ -393,7 +397,8 @@ def analytics(
     ids = [s.id for s in studs]
     if not ids:
         return empty
-    readings = db.scalars(select(ReadingAttempt).where(ReadingAttempt.student_id.in_(ids))).all()
+    all_readings = db.scalars(select(ReadingAttempt).where(ReadingAttempt.student_id.in_(ids))).all()
+    readings = [a for a in all_readings if a.asr_status == "completed"]
     writings = db.scalars(select(WritingAttempt).where(WritingAttempt.student_id.in_(ids))).all()
 
     weekly: dict[str, dict] = defaultdict(lambda: {"reading": 0, "writing": 0, "acc": [], "wpm": [], "score": []})
@@ -452,6 +457,7 @@ def analytics(
             "none": len(set(ids) - read_any - write_any),
         },
         "unverifiedMetrics": sum(1 for a in readings if a.metrics_verified is False),
+        "pendingTranscriptions": len(all_readings) - len(readings),
     }
 
 

@@ -34,7 +34,7 @@ export const AtRiskWatchlist: React.FC<Props> = ({ students, onSelectStudent }) 
         <div style={styles.grid}>
           {list.map((s) => {
             const last = s.recentReadingAttempts[0];
-            const errs = s.recentReadingAttempts.slice(0, 3).reduce((acc, a) => ({ o: acc.o + a.omissions, s: acc.s + a.substitutions }), { o: 0, s: 0 });
+            const errs = s.recentReadingAttempts.slice(0, 3).reduce((acc, a) => ({ o: acc.o + (a.omissions ?? 0), s: acc.s + (a.substitutions ?? 0) }), { o: 0, s: 0 });
             const words = Array.from(new Set(s.recentReadingAttempts.slice(0, 3).flatMap((a) => a.practiceWords))).slice(0, 8);
             return (
               <Card key={s.studentId} style={{ borderLeft: '4px solid #DC2626' }}>

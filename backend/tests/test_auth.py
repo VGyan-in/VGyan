@@ -98,7 +98,7 @@ def test_health(client):
     assert client.get("/health").json()["status"] == "ok"
     r = client.get("/health/ready")
     assert r.status_code == 200
-    assert r.json()["checks"]["database"]["migration"] == "0002"
+    assert r.json()["checks"]["database"]["migration"] == "0003"
 
 
 def test_assignments_include_seeded_passages(client):

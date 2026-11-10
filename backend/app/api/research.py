@@ -226,6 +226,7 @@ def summary(user: StaffUser = Depends(require_roles("researcher", "admin")), db:
         "writingAttempts": len(w),
         "readingWithAudio": sum(1 for a in r if a.audio_key),
         "readingMetricsUnverified": sum(1 for a in r if a.metrics_verified is False),
+        "readingPendingTranscription": sum(1 for a in r if a.asr_status == "pending"),
         "writingFromImage": sum(1 for a in w if a.input_method != "typed"),
         "byLanguage": {
             lang: {"reading": sum(1 for a in r if a.language == lang), "writing": sum(1 for a in w if a.language == lang)}
