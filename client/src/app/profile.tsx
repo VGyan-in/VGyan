@@ -5,9 +5,24 @@ import { AppIcon, IconName } from "@/components/ui/app-icon";
 import { ButtonRow, C, Card, FlowButton, Notice, SectionTitle, TabScreen, flowStyles } from "@/components/flow-ui";
 import { config } from "@/core/config";
 import { mediaUsage } from "@/core/storage/files";
+import { Field } from "@/components/form-ui";
 import { useApp } from "@/state/app-store";
+import { getModelState, type ModelState } from "@/features/reading/models";
 import { confirmAction } from "@/utils/confirm";
 import { formatBytes, formatSyncTime } from "@/utils/format";
+
+function speechStatus(st: ModelState["status"], en: boolean) {
+  switch (st) {
+    case "ready":
+      return en ? "Installed" : "ಸ್ಥಾಪಿಸಲಾಗಿದೆ";
+    case "unavailable":
+      return en ? "Model not released yet" : "ಮಾದರಿ ಇನ್ನೂ ಲಭ್ಯವಿಲ್ಲ";
+    case "unsupported":
+      return en ? "Android app only" : "ಆಂಡ್ರಾಯ್ಡ್ ಮಾತ್ರ";
+    default:
+      return en ? "Download on first reading" : "ಮೊದಲ ಓದಿನಲ್ಲಿ ಡೌನ್‌ಲೋಡ್";
+  }
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -25,8 +40,13 @@ export default function ProfileScreen() {
     syncNow,
     withdrawConsent,
     deleteLocalData,
+    joinClass,
+    requestServerDeletion,
     logout,
   } = useApp();
+  const [classCode, setClassCode] = useState("");
+  const [classMsg, setClassMsg] = useState<{ tone: "info" | "error"; text: string } | null>(null);
+  const [deletionMsg, setDeletionMsg] = useState<string | null>(null);
   const en = lang === "en";
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
@@ -98,6 +118,39 @@ export default function ProfileScreen() {
       destructive: true,
     });
     if (ok) await deleteLocalData();
+  };
+
+  const handleJoinClass = async () => {
+    const code = classCode.trim().toUpperCase();
+    if (code.length < 4) return;
+    const res = await joinClass(code);
+    setClassMsg(
+      res.ok
+        ? { tone: "info", text: en ? "Joined. Your teacher can now see your progress." : "ಸೇರಿದ್ದೀರಿ. ನಿಮ್ಮ ಶಿಕ್ಷಕರು ಈಗ ನಿಮ್ಮ ಪ್ರಗತಿಯನ್ನು ನೋಡಬಹುದು." }
+        : res.error === "invalid-class-code"
+        ? { tone: "error", text: en ? "Class code not found. Check it with your teacher." : "ತರಗತಿ ಕೋಡ್ ಸಿಗಲಿಲ್ಲ. ಶಿಕ್ಷಕರೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ." }
+        : { tone: "error", text: en ? "Needs internet. The code is saved and will be sent on the next sync." : "ಇಂಟರ್ನೆಟ್ ಬೇಕು. ಮುಂದಿನ ಸಿಂಕ್‌ನಲ್ಲಿ ಕಳುಹಿಸಲಾಗುತ್ತದೆ." }
+    );
+    if (res.ok) setClassCode("");
+  };
+
+  const handleServerDeletion = async () => {
+    const ok = await confirmAction({
+      title: en ? "Ask to delete research data?" : "ಸಂಶೋಧನಾ ಡೇಟಾ ಅಳಿಸಲು ವಿನಂತಿಸುವುದೇ?",
+      message: en
+        ? "This sends a request to the research team to delete this student's uploaded recordings, photos and results from the server. They will process it according to the study's approved rules."
+        : "ಸರ್ವರ್‌ನಲ್ಲಿರುವ ಈ ವಿದ್ಯಾರ್ಥಿಯ ರೆಕಾರ್ಡಿಂಗ್, ಫೋಟೋ ಮತ್ತು ಫಲಿತಾಂಶಗಳನ್ನು ಅಳಿಸಲು ಸಂಶೋಧನಾ ತಂಡಕ್ಕೆ ವಿನಂತಿ ಕಳುಹಿಸಲಾಗುತ್ತದೆ.",
+      confirmLabel: en ? "Send request" : "ವಿನಂತಿ ಕಳುಹಿಸಿ",
+      cancelLabel: en ? "Cancel" : "ರದ್ದುಮಾಡಿ",
+      destructive: true,
+    });
+    if (!ok) return;
+    const res = await requestServerDeletion("Requested from the student app");
+    setDeletionMsg(
+      res.ok
+        ? en ? "Request sent. The research team will contact your school." : "ವಿನಂತಿ ಕಳುಹಿಸಲಾಗಿದೆ."
+        : en ? "Could not send the request. Connect to the internet and try again." : "ವಿನಂತಿ ಕಳುಹಿಸಲಾಗಲಿಲ್ಲ. ಇಂಟರ್ನೆಟ್ ಸಂಪರ್ಕಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+    );
   };
 
   const handleLogout = async () => {
@@ -284,14 +337,37 @@ export default function ProfileScreen() {
           disabled={attemptCount === 0}
           onPress={handleDelete}
         />
+        <View style={{ height: 10 }} />
+        <FlowButton
+          variant="danger"
+          label={en ? "Request deletion from the research server" : "ಸರ್ವರ್‌ನಿಂದ ಅಳಿಸಲು ವಿನಂತಿಸಿ"}
+          onPress={handleServerDeletion}
+        />
+        {deletionMsg ? <Notice tone="info" text={deletionMsg} /> : null}
+      </Card>
+
+      {/* Class */}
+      <SectionTitle title={en ? "Join your teacher's class" : "ಶಿಕ್ಷಕರ ತರಗತಿಗೆ ಸೇರಿ"} />
+      <Card>
+        <Field
+          label={en ? "Class code" : "ತರಗತಿ ಕೋಡ್"}
+          placeholder="ABC234"
+          value={classCode}
+          onChangeText={setClassCode}
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
+        <FlowButton variant="secondary" label={en ? "Join class" : "ತರಗತಿಗೆ ಸೇರಿ"} disabled={classCode.trim().length < 4} onPress={handleJoinClass} />
+        {classMsg ? <Notice tone={classMsg.tone} text={classMsg.text} /> : null}
       </Card>
 
       {/* About */}
       <SectionTitle title={en ? "About this app" : "ಈ ಆ್ಯಪ್ ಬಗ್ಗೆ"} />
       <Card>
-        <Engine icon="mic" label={en ? "Speech recognition" : "ಧ್ವನಿ ಗುರುತಿಸುವಿಕೆ"} status={en ? "Preview (simulated)" : "ಪೂರ್ವವೀಕ್ಷಣೆ"} />
-        <Engine icon="doc" label={en ? "Handwriting reading (OCR)" : "ಕೈಬರಹ ಓದುವಿಕೆ (OCR)"} status={en ? "Preview (sample text)" : "ಪೂರ್ವವೀಕ್ಷಣೆ"} />
-        <Engine icon="sparkles" label={en ? "Feedback" : "ಪ್ರತಿಕ್ರಿಯೆ"} status={en ? "On-device rules" : "ಸಾಧನದ ನಿಯಮಗಳು"} />
+        <Engine icon="mic" label={en ? "English speech (offline)" : "ಇಂಗ್ಲಿಷ್ ಧ್ವನಿ (ಆಫ್‌ಲೈನ್)"} status={speechStatus(getModelState("English").status, en)} />
+        <Engine icon="mic" label={en ? "Kannada speech (offline)" : "ಕನ್ನಡ ಧ್ವನಿ (ಆಫ್‌ಲೈನ್)"} status={speechStatus(getModelState("Kannada").status, en)} />
+        <Engine icon="doc" label={en ? "Handwriting reading (OCR)" : "ಕೈಬರಹ ಓದುವಿಕೆ (OCR)"} status={en ? "Server, needs internet" : "ಸರ್ವರ್, ಇಂಟರ್ನೆಟ್ ಬೇಕು"} />
+        <Engine icon="sparkles" label={en ? "AI feedback" : "AI ಪ್ರತಿಕ್ರಿಯೆ"} status={en ? "Server, needs internet" : "ಸರ್ವರ್, ಇಂಟರ್ನೆಟ್ ಬೇಕು"} />
         <Engine
           icon="cloud-check"
           label={en ? "Research server" : "ಸಂಶೋಧನಾ ಸರ್ವರ್"}

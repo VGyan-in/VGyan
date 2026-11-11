@@ -33,8 +33,9 @@ export default function HomeScreen() {
     readingAttempts.find((a) => a.title === passage.title);
   const todayPrompt = WRITING_PROMPTS.find((p) => p.language === (lang === "kn" ? "Kannada" : "English"))!;
   const lastWriting = writingAttempts.find((a) => a.aiStatus !== "pending" && a.aiStatus !== "failed");
-  const avgAccuracy = readingAttempts.length
-    ? Math.round(readingAttempts.reduce((sum, a) => sum + a.accuracy, 0) / readingAttempts.length)
+  const scored = readingAttempts.filter((a) => a.asrStatus !== "pending");
+  const avgAccuracy = scored.length
+    ? Math.round(scored.reduce((sum, a) => sum + a.accuracy, 0) / scored.length)
     : null;
   const recent = [
     ...readingAttempts.map((a) => ({ kind: "reading" as const, a })),
@@ -238,7 +239,9 @@ export default function HomeScreen() {
                 </Text>
                 <Text style={styles.previewMeta}>
                   {lastReading
-                    ? `${lang === "en" ? "Last attempt" : "ಕೊನೆಯ ಪ್ರಯತ್ನ"}: ${lastReading.accuracy}% • ${lastReading.wpm} WPM`
+                    ? lastReading.asrStatus === "pending"
+                      ? `${lang === "en" ? "Last attempt" : "ಕೊನೆಯ ಪ್ರಯತ್ನ"}: ${lang === "en" ? "waiting to be checked" : "ಪರಿಶೀಲನೆಗೆ ಕಾಯುತ್ತಿದೆ"}`
+                      : `${lang === "en" ? "Last attempt" : "ಕೊನೆಯ ಪ್ರಯತ್ನ"}: ${lastReading.accuracy}% • ${lastReading.wpm} WPM`
                     : lang === "en" ? "Not attempted yet" : "ಇನ್ನೂ ಪ್ರಯತ್ನಿಸಿಲ್ಲ"}
                 </Text>
               </View>
@@ -364,14 +367,18 @@ export default function HomeScreen() {
                     <Text style={styles.historyMeta}>
                       {attemptDate(entry.a)} • {entry.a.language === "English" ? "EN" : "KN"} •{" "}
                       {entry.kind === "reading"
-                        ? `${entry.a.level} • ${entry.a.wpm} WPM`
+                        ? entry.a.asrStatus === "pending"
+                          ? `${entry.a.level}`
+                          : `${entry.a.level} • ${entry.a.wpm} WPM`
                         : `${entry.a.wordCount} ${lang === "en" ? "words" : "ಪದಗಳು"}`}
                     </Text>
                   </View>
                   <View style={styles.historyScoreBlock}>
                     <Text style={styles.historyScoreNum}>
                       {entry.kind === "reading"
-                        ? `${entry.a.accuracy}%`
+                        ? entry.a.asrStatus === "pending"
+                          ? "…"
+                          : `${entry.a.accuracy}%`
                         : entry.a.aiStatus === "pending" || entry.a.aiStatus === "failed"
                         ? "…"
                         : entry.a.score.toFixed(1)}

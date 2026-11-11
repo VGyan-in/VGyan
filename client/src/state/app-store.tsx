@@ -12,6 +12,7 @@ import * as Device from "expo-device";
 import * as Network from "expo-network";
 import type { Lang } from "@/constants/content";
 import { config, isServerConfigured } from "@/core/config";
+import { ApiError, postJson } from "@/core/api/client";
 import { hashPassword, newId, verifyPassword } from "@/core/auth/credentials";
 import { clearAuthToken, remoteLogin, remoteRegister, syncProfile } from "@/core/auth/remote";
 import { createRepository } from "@/core/db/repository";
@@ -26,6 +27,7 @@ import { getModelState } from "@/features/reading/models";
 import { analyzeReading, ANALYSIS_VERSION } from "@/features/reading/analyzer";
 import { computeFluency } from "@/features/reading/fluency";
 import { acquireSyncLock, releaseSyncLock } from "@/core/sync/lock";
+import { loadCachedContent, refreshContent } from "@/features/content/remote-content";
 
 import type {
   ConsentRecord,
@@ -86,6 +88,10 @@ interface AppStateValue {
   login: (identifier: string, password: string) => Promise<ActionResult>;
   logout: () => Promise<void>;
   updateProfile: (patch: Partial<StudentProfile>) => Promise<void>;
+  /** Links the student to a teacher's class with the join code (needs the server). */
+  joinClass: (code: string) => Promise<ActionResult>;
+  /** Asks the research team to delete this participant's data on the server. */
+  requestServerDeletion: (reason: string) => Promise<ActionResult>;
 
   consent: ConsentRecord | null;
   hasActiveConsent: boolean;
@@ -209,6 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         await repo.init();
         await resetInterrupted(repo);
+        await loadCachedContent(repo);
         const [savedLang, pid, lastSync, auto] = await Promise.all([
           repo.getMeta(META.lang),
           repo.getMeta(META.participant),
@@ -400,6 +407,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSync((s) => ({ ...s, isSyncing: true }));
     try {
       await processPendingTranscriptions();
+      await refreshContent(repo);
       if (profile) await syncProfile(repo, profile).catch(() => {});
       await retryPendingFeedback();
       const result = await processQueue(repo, uploader, { maxRetries: config.syncMaxRetries });
@@ -613,6 +621,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [repo, profile]
   );
 
+  const joinClass = useCallback(
+    async (code: string): Promise<ActionResult> => {
+      if (!profile) return { ok: false, error: "not-signed-in" };
+      if (!isServerConfigured()) return { ok: false, error: "network" };
+      try {
+        const done = await syncProfile(repo, profile, code);
+        return done ? { ok: true } : { ok: false, error: "network" };
+      } catch {
+        return { ok: false, error: "invalid-class-code" };
+      }
+    },
+    [repo, profile]
+  );
+
+  const requestServerDeletion = useCallback(async (reason: string): Promise<ActionResult> => {
+    if (!isServerConfigured()) return { ok: false, error: "network" };
+    try {
+      await postJson("/student/me/deletion-request", { reason });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof ApiError && e.status !== null ? "server" : "network" };
+    }
+  }, []);
+
   // ---------- Consent ----------
 
   const acceptConsent = useCallback(
@@ -773,6 +805,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveNewWriting,
     updateWritingAttempt,
     requestFeedbackFor: readingFeedback,
+    joinClass,
+    requestServerDeletion,
     requestWritingAssessmentFor: writingFeedback,
     writingDraft,
     setWritingDraft,
