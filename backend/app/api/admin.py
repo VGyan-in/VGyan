@@ -39,12 +39,12 @@ def new_join_code() -> str:
 
 
 @router.get("/schools")
-def list_schools(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def list_schools(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     return [{"id": str(s.id), "name": s.name, "district": s.district} for s in db.scalars(select(School).order_by(School.name))]
 
 
 @router.post("/schools", status_code=201)
-def create_school(body: SchoolIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def create_school(body: SchoolIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     s = School(name=body.name.strip(), district=body.district)
     db.add(s)
     db.flush()
@@ -53,7 +53,7 @@ def create_school(body: SchoolIn, user: StaffUser = Depends(require_roles("admin
 
 
 @router.get("/classes")
-def list_classes(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def list_classes(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     return [
         {
             "id": str(c.id),
@@ -68,7 +68,7 @@ def list_classes(user: StaffUser = Depends(require_roles("admin")), db: Session 
 
 
 @router.post("/classes", status_code=201)
-def create_class(body: ClassIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def create_class(body: ClassIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     if not db.get(School, body.school_id):
         raise ApiError(404, "not_found", "School not found")
     section = body.section.strip().upper()
@@ -87,7 +87,7 @@ def create_class(body: ClassIn, user: StaffUser = Depends(require_roles("admin")
 
 
 @router.get("/staff")
-def list_staff(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def list_staff(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     links: dict[uuid.UUID, list[str]] = {}
     for tc in db.scalars(select(TeacherClass)):
         links.setdefault(tc.staff_id, []).append(str(tc.class_id))
@@ -106,7 +106,7 @@ def list_staff(user: StaffUser = Depends(require_roles("admin")), db: Session = 
 
 
 @router.post("/staff", status_code=201)
-def create_staff(body: StaffIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def create_staff(body: StaffIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     email = body.email.strip().lower()
     if db.scalar(select(StaffUser.id).where(func.lower(StaffUser.email) == email)):
         raise ApiError(409, "staff_exists", "A staff account with this e-mail exists")
@@ -125,7 +125,10 @@ def create_staff(body: StaffIn, user: StaffUser = Depends(require_roles("admin")
 
 @router.put("/staff/{staff_id}/classes")
 def set_staff_classes(
-    staff_id: uuid.UUID, class_ids: list[uuid.UUID], user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    staff_id: uuid.UUID,
+    class_ids: list[uuid.UUID],
+    user: StaffUser = Depends(require_roles("admin")),
+    db: Session = Depends(get_db, scope="function"),
 ):
     target = db.get(StaffUser, staff_id)
     if not target:
@@ -140,7 +143,9 @@ def set_staff_classes(
 
 
 @router.post("/staff/{staff_id}/deactivate", status_code=204)
-def deactivate_staff(staff_id: uuid.UUID, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def deactivate_staff(
+    staff_id: uuid.UUID, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")
+):
     target = db.get(StaffUser, staff_id)
     if not target:
         raise ApiError(404, "not_found", "Staff member not found")
@@ -152,7 +157,7 @@ def deactivate_staff(staff_id: uuid.UUID, user: StaffUser = Depends(require_role
 
 
 @router.get("/deletion-requests")
-def list_deletion_requests(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def list_deletion_requests(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     return [
         {
             "id": str(r.id),
@@ -169,7 +174,10 @@ def list_deletion_requests(user: StaffUser = Depends(require_roles("admin")), db
 
 @router.post("/deletion-requests/{request_id}")
 def process_deletion(
-    request_id: uuid.UUID, body: DeletionDecisionIn, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    request_id: uuid.UUID,
+    body: DeletionDecisionIn,
+    user: StaffUser = Depends(require_roles("admin")),
+    db: Session = Depends(get_db, scope="function"),
 ):
     """Completing a request permanently removes the participant's attempts, revisions, AI/OCR records
     and stored media, and anonymises the account. Consent records are kept (with the guardian name

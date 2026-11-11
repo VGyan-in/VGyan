@@ -36,7 +36,7 @@ _DUMMY = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0$Zm9vYmFyZm9vYmFyZm9vYm
 
 
 @router.post("/auth/staff/login", response_model=TokenOut)
-def staff_login(body: StaffLoginIn, request: Request, db: Session = Depends(get_db)):
+def staff_login(body: StaffLoginIn, request: Request, db: Session = Depends(get_db, scope="function")):
     limiter.check(f"staff-login:{client_ip(request)}", 20, 300)
     email = body.email.strip().lower()
     limiter.check(f"staff-login-id:{email}", 8, 300)
@@ -49,7 +49,7 @@ def staff_login(body: StaffLoginIn, request: Request, db: Session = Depends(get_
 
 
 @router.post("/auth/staff/logout-all", status_code=204)
-def staff_logout_all(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db)):
+def staff_logout_all(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db, scope="function")):
     user.token_version += 1
     audit(db, "staff", user.id, "staff.logout_all", "staff", user.id)
 
@@ -196,7 +196,7 @@ def student_summary(
 
 
 @router.get("/teacher/me")
-def me(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db)):
+def me(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db, scope="function")):
     allowed = visible_class_ids(db, user)
     q = select(ClassGroup).order_by(ClassGroup.grade, ClassGroup.section)
     if allowed is not None:
@@ -228,7 +228,7 @@ def me(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db)):
 def students(
     class_id: uuid.UUID | None = Query(default=None, alias="classId"),
     user: StaffUser = Depends(require_roles("teacher", "admin")),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     q = _students_query(db, user)
     if q is None:
@@ -250,7 +250,9 @@ def students(
 
 
 @router.get("/teacher/students/{student_id}")
-def student_detail(student_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def student_detail(
+    student_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
+):
     s = db.get(Student, student_id)
     if not s or not s.is_active:
         raise ApiError(404, "not_found", "Student not found")
@@ -263,7 +265,9 @@ def student_detail(student_id: uuid.UUID, user: StaffUser = Depends(require_role
 
 
 @router.get("/teacher/reading/{attempt_id}/audio")
-def reading_audio(attempt_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def reading_audio(
+    attempt_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
+):
     a = db.get(ReadingAttempt, attempt_id)
     if not a or not a.audio_key:
         raise ApiError(404, "not_found", "Recording not found")
@@ -274,7 +278,9 @@ def reading_audio(attempt_id: uuid.UUID, user: StaffUser = Depends(require_roles
 
 
 @router.get("/teacher/writing/{attempt_id}/image")
-def writing_image(attempt_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def writing_image(
+    attempt_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
+):
     a = db.get(WritingAttempt, attempt_id)
     if not a or not a.image_key:
         raise ApiError(404, "not_found", "Image not found")
@@ -289,7 +295,7 @@ def missed_words(
     language: str | None = None,
     limit: int = Query(default=30, ge=1, le=200),
     user: StaffUser = Depends(require_roles("teacher", "admin")),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     q = _students_query(db, user)
     if q is None:
@@ -335,7 +341,7 @@ def missed_words(
 def list_comments(
     student_id: uuid.UUID | None = Query(default=None, alias="studentId"),
     user: StaffUser = Depends(require_roles("teacher", "admin")),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     q = _students_query(db, user)
     if q is None:
@@ -360,7 +366,9 @@ def list_comments(
 
 
 @router.post("/teacher/comments", status_code=201)
-def add_comment(body: CommentIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def add_comment(
+    body: CommentIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
+):
     s = db.get(Student, body.student_id)
     if not s:
         raise ApiError(404, "not_found", "Student not found")
@@ -384,7 +392,7 @@ def add_comment(body: CommentIn, user: StaffUser = Depends(require_roles("teache
 def analytics(
     class_id: uuid.UUID | None = Query(default=None, alias="classId"),
     user: StaffUser = Depends(require_roles("teacher", "admin")),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     """Class-level trends computed from stored attempts only."""
     q = _students_query(db, user)
@@ -462,7 +470,7 @@ def analytics(
 
 
 @router.get("/teacher/classes/{class_id}/teachers")
-def class_teachers(class_id: uuid.UUID, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def class_teachers(class_id: uuid.UUID, user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
     rows = db.execute(
         select(StaffUser).join(TeacherClass, TeacherClass.staff_id == StaffUser.id).where(TeacherClass.class_id == class_id)
     ).scalars()

@@ -38,7 +38,12 @@ def session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Iterator[Session]:
-    """One transaction per request: committed on success, rolled back on any error."""
+    """One transaction per request: committed on success, rolled back on any error.
+
+    Always use as Depends(get_db, scope="function") so the commit happens before the response is
+    sent. With the default scope FastAPI runs this exit code after responding, and a phone could be
+    told "stored" (and then purge its copy) before the data is durable.
+    """
     db = session_factory()()
     try:
         yield db

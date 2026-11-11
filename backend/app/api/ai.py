@@ -66,7 +66,7 @@ def get_settings_model() -> str:
 
 
 @router.post("/ai/reading-feedback", response_model=ReadingFeedbackOut)
-def reading_feedback(body: ReadingFeedbackIn, student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def reading_feedback(body: ReadingFeedbackIn, student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     limiter.check(f"ai:{student.id}", 30, 600)
     _active_consent(db, student)  # student content goes to a third-party model only with consent
     m = body.metrics
@@ -113,7 +113,7 @@ def reading_feedback(body: ReadingFeedbackIn, student: Student = Depends(current
 
 
 @router.post("/ai/writing-assessment", response_model=WritingAssessmentOut)
-def writing_assessment(body: WritingAssessIn, student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def writing_assessment(body: WritingAssessIn, student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     limiter.check(f"ai:{student.id}", 30, 600)
     _active_consent(db, student)
     counts = writing_counts(body.text)
@@ -157,7 +157,7 @@ def ocr(
     language: str = Form(...),
     file: UploadFile = File(...),
     student: Student = Depends(current_student),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     limiter.check(f"ocr:{student.id}", 20, 600)
     if not _active_consent(db, student).handwriting_consent:

@@ -18,12 +18,14 @@ _TEXT_FIELDS = ("text", "kannada_text", "title", "kannada_title", "language", "l
 
 
 @router.get("/passages")
-def list_passages(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db)):
+def list_passages(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db, scope="function")):
     return [passage_out(p) for p in db.scalars(select(Passage).order_by(Passage.kind, Passage.language, Passage.id))]
 
 
 @router.post("/passages", status_code=201)
-def create_passage(body: PassageIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def create_passage(
+    body: PassageIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
+):
     if db.get(Passage, body.id):
         raise ApiError(409, "passage_exists", "A passage with this ID already exists")
     if body.kind == "reading" and not body.level:
@@ -37,7 +39,10 @@ def create_passage(body: PassageIn, user: StaffUser = Depends(require_roles("tea
 
 @router.put("/passages/{passage_id}")
 def update_passage(
-    passage_id: str, body: PassageIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)
+    passage_id: str,
+    body: PassageIn,
+    user: StaffUser = Depends(require_roles("teacher", "admin")),
+    db: Session = Depends(get_db, scope="function"),
 ):
     p = db.get(Passage, passage_id)
     if not p:
@@ -56,7 +61,7 @@ def update_passage(
 
 
 @router.get("/assignments")
-def list_assignments(user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def list_assignments(user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")):
     q = select(Assignment).order_by(Assignment.created_at.desc())
     allowed = visible_class_ids(db, user)
     if allowed is not None:
@@ -74,7 +79,9 @@ def list_assignments(user: StaffUser = Depends(require_roles("teacher", "admin")
 
 
 @router.post("/assignments", status_code=201)
-def create_assignment(body: AssignmentIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)):
+def create_assignment(
+    body: AssignmentIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
+):
     allowed = visible_class_ids(db, user)
     if allowed is not None and body.class_id not in allowed:
         raise ApiError(404, "not_found", "Class not found")
@@ -94,7 +101,7 @@ def create_assignment(body: AssignmentIn, user: StaffUser = Depends(require_role
 
 @router.delete("/assignments/{assignment_id}", status_code=204)
 def delete_assignment(
-    assignment_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db)
+    assignment_id: uuid.UUID, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
 ):
     a = db.get(Assignment, assignment_id)
     allowed = visible_class_ids(db, user)

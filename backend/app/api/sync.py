@@ -133,7 +133,7 @@ def _check_immutable(existing, rec_values: dict, fields: tuple[str, ...]) -> Non
 
 
 @router.post("/consent", response_model=SyncOut)
-def sync_consent(record: str = Form(...), student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def sync_consent(record: str = Form(...), student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     raw = _parse(record)
     c = _validate(ConsentIn, raw)
     _own(student, c.participant_id)
@@ -183,7 +183,7 @@ def sync_reading(
     record: str = Form(...),
     file: UploadFile | None = File(default=None),
     student: Student = Depends(current_student),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     raw = _parse(record)
     rec: ReadingRecordIn = _validate(ReadingRecordIn, raw)
@@ -319,7 +319,7 @@ def sync_writing(
     record: str = Form(...),
     file: UploadFile | None = File(default=None),
     student: Student = Depends(current_student),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
 ):
     raw = _parse(record)
     rec: WritingRecordIn = _validate(WritingRecordIn, raw)

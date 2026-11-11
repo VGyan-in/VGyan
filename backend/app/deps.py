@@ -23,7 +23,7 @@ def _bearer(authorization: str | None) -> dict:
         raise ApiError(401, "unauthorized", "Invalid session") from e
 
 
-def current_student(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Student:
+def current_student(authorization: str | None = Header(default=None), db: Session = Depends(get_db, scope="function")) -> Student:
     claims = _bearer(authorization)
     if claims.get("role") != "student":
         raise ApiError(403, "forbidden", "Student account required")
@@ -33,7 +33,7 @@ def current_student(authorization: str | None = Header(default=None), db: Sessio
     return student
 
 
-def current_staff(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> StaffUser:
+def current_staff(authorization: str | None = Header(default=None), db: Session = Depends(get_db, scope="function")) -> StaffUser:
     claims = _bearer(authorization)
     if claims.get("role") not in ("teacher", "researcher", "admin"):
         raise ApiError(403, "forbidden", "Staff account required")

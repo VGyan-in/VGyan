@@ -22,7 +22,7 @@ def health():
 
 
 @router.get("/health/ready")
-def ready(db: Session = Depends(get_db)):
+def ready(db: Session = Depends(get_db, scope="function")):
     """Readiness: database and object storage reachable. Reports (not fails on) optional AI/OCR config."""
     checks = {}
     ok = True

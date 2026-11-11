@@ -49,7 +49,7 @@ def student_profile_out(s: Student) -> dict:
 
 
 @router.post("/register", status_code=201, response_model=TokenOut)
-def register(body: StudentRegisterIn, request: Request, db: Session = Depends(get_db)):
+def register(body: StudentRegisterIn, request: Request, db: Session = Depends(get_db, scope="function")):
     limiter.check(f"register:{client_ip(request)}", 10, 3600)
     if not get_settings().allow_student_registration:
         raise ApiError(403, "registration_closed", "Registration is closed. Ask your teacher for an account.")
@@ -77,7 +77,7 @@ def register(body: StudentRegisterIn, request: Request, db: Session = Depends(ge
 
 
 @router.post("/login", response_model=TokenOut)
-def login(body: StudentLoginIn, request: Request, db: Session = Depends(get_db)):
+def login(body: StudentLoginIn, request: Request, db: Session = Depends(get_db, scope="function")):
     ident = body.student_id.strip()
     limiter.check(f"student-login:{client_ip(request)}", 30, 300)
     limiter.check(f"student-login-id:{ident.lower()}", 10, 300)
@@ -102,7 +102,7 @@ def me(student: Student = Depends(current_student)):
 
 
 @router.patch("/me")
-def update_me(body: StudentProfileIn, student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def update_me(body: StudentProfileIn, student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     data = body.model_dump(by_alias=True, exclude_unset=True)
     if "classCode" in data:
         cg = class_by_code(db, data.pop("classCode"))
@@ -122,7 +122,7 @@ def update_me(body: StudentProfileIn, student: Student = Depends(current_student
 
 
 @router.post("/logout-all", status_code=204)
-def logout_all(student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def logout_all(student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     student.token_version += 1
     audit(db, "student", student.id, "student.logout_all", "student", student.id)
 
@@ -170,7 +170,7 @@ def _writing_out(a: WritingAttempt) -> dict:
 
 
 @router.get("/my_report")
-def my_report(student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def my_report(student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     """Everything the server holds for this student's progress screens (e.g. after changing phones)."""
     readings = db.scalars(
         select(ReadingAttempt).where(ReadingAttempt.student_id == student.id).order_by(ReadingAttempt.client_created_at.desc())
@@ -212,7 +212,7 @@ def passage_out(p: Passage) -> dict:
 
 
 @router.get("/assignments")
-def assignments(student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def assignments(student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     """Active passages and prompts for offline caching, plus which ones the student's class was assigned."""
     passages = db.scalars(select(Passage).where(Passage.is_active.is_(True)).order_by(Passage.id)).all()
     assigned: dict[str, str | None] = {}
@@ -223,7 +223,7 @@ def assignments(student: Student = Depends(current_student), db: Session = Depen
 
 
 @router.post("/me/deletion-request", status_code=202)
-def request_deletion(body: DeletionRequestIn, student: Student = Depends(current_student), db: Session = Depends(get_db)):
+def request_deletion(body: DeletionRequestIn, student: Student = Depends(current_student), db: Session = Depends(get_db, scope="function")):
     """Records a request to delete this participant's research data. An administrator processes it
     according to the approved retention protocol; nothing is deleted silently."""
     existing = db.scalar(select(DeletionRequest).where(DeletionRequest.student_id == student.id, DeletionRequest.status == "pending"))

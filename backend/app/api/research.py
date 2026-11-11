@@ -192,7 +192,7 @@ def export(
     start: date | None = None,
     end: date | None = None,
     user: StaffUser = Depends(require_roles("researcher", "admin")),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db, scope="function"),
     _fmt: str = Query(default="csv", alias="format", pattern="^csv$"),
 ):
     header, rows = _rows(db, dataset, language, start, end)
@@ -215,7 +215,7 @@ def export(
 
 
 @router.get("/summary")
-def summary(user: StaffUser = Depends(require_roles("researcher", "admin")), db: Session = Depends(get_db)):
+def summary(user: StaffUser = Depends(require_roles("researcher", "admin")), db: Session = Depends(get_db, scope="function")):
     studs = consented_students(db)
     ids = list(studs)
     r = db.scalars(select(ReadingAttempt).where(ReadingAttempt.student_id.in_(ids or [None]))).all()
