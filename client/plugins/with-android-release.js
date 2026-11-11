@@ -32,10 +32,17 @@ function withReleaseSigning(config) {
                 signingConfig signingConfigs.release
             } else if (System.getenv("VGYAN_ALLOW_DEBUG_SIGNED_RELEASE") == "1") {
                 signingConfig signingConfigs.debug
-            } else {
-                throw new GradleException("Release signing keystore not configured (VGYAN_UPLOAD_STORE_FILE)")
             }`
     );
+    // Checked when the task graph is known, so debug builds are unaffected.
+    g += `
+gradle.taskGraph.whenReady { graph ->
+    def wantsRelease = graph.allTasks.any { it.name.toLowerCase().contains("release") && it.project.name == "app" }
+    if (wantsRelease && !System.getenv("VGYAN_UPLOAD_STORE_FILE") && System.getenv("VGYAN_ALLOW_DEBUG_SIGNED_RELEASE") != "1") {
+        throw new GradleException("Release signing keystore not configured (set VGYAN_UPLOAD_STORE_FILE etc.)")
+    }
+}
+`;
     cfg.modResults.contents = g;
     return cfg;
   });
