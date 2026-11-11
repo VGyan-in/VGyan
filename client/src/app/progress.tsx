@@ -35,7 +35,8 @@ export default function ProgressScreen() {
     const inRange = (a: { createdAt: string }) =>
       days == null || now - new Date(a.createdAt).getTime() <= days * 86400000;
     return {
-      reading: readingAttempts.filter(inRange),
+      // Recordings waiting for a speech model have no metrics yet; never average them as 0.
+      reading: readingAttempts.filter((a) => a.asrStatus !== "pending").filter(inRange),
       writing: writingAttempts
         .filter(inRange)
         .filter((a) => a.aiStatus !== "pending" && a.aiStatus !== "failed"),

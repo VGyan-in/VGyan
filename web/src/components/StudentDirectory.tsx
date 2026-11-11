@@ -29,7 +29,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
         : !student.isAtRisk;
 
     const matchesLang =
-      langFilter === 'all' ? true : student.nativeLanguage === langFilter;
+      langFilter === 'all' ? true : (student.profile.nativeLanguage ?? '') === langFilter;
 
     return matchesSearch && matchesStatus && matchesLang;
   });
@@ -58,7 +58,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
               style={styles.select}
             >
               <option value="all">All Statuses ({students.length})</option>
-              <option value="at-risk">At Risk (&lt; 75%)</option>
+              <option value="at-risk">Needs support</option>
               <option value="on-track">On Track</option>
             </select>
           </div>
@@ -70,9 +70,11 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
               style={styles.select}
             >
               <option value="all">All Home Languages</option>
-              <option value="Kannada">Kannada</option>
-              <option value="Tamil">Tamil</option>
-              <option value="Urdu">Urdu</option>
+              {Array.from(new Set(students.map((s) => s.profile.nativeLanguage).filter(Boolean))).sort().map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -108,7 +110,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                       </span>
                       <div>
                         <div style={styles.nameText}>{student.name}</div>
-                        <div style={styles.subText}>{student.studentId} • Class {student.grade}{student.section}</div>
+                        <div style={styles.subText}>{student.className ?? 'No class'} • {student.readingCount} reading / {student.writingCount} writing</div>
                       </div>
                     </div>
                   </td>
@@ -116,12 +118,18 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                     <code style={styles.codeBadge}>{student.participantId}</code>
                   </td>
                   <td style={styles.td}>
-                    <span style={styles.langPill}>{student.nativeLanguage}</span>
+                    <span style={styles.langPill}>{student.profile.nativeLanguage || '—'}</span>
                   </td>
                   <td style={styles.td}>
-                    <span className="badge badge-teal" title="Guardian Research Consent Active">
-                      <ShieldCheck size={12} /> Active
-                    </span>
+                    {student.consentStatus === 'active' ? (
+                      <span className={student.consentCurrent ? 'badge badge-teal' : 'badge badge-warning'} title={`Consent version ${student.consentVersion}`}>
+                        <ShieldCheck size={12} /> {student.consentCurrent ? 'Active' : 'Renewal due'}
+                      </span>
+                    ) : (
+                      <span className={student.consentStatus === 'withdrawn' ? 'badge badge-risk' : 'badge badge-warning'}>
+                        {student.consentStatus === 'withdrawn' ? 'Withdrawn' : 'Not received'}
+                      </span>
+                    )}
                   </td>
                   <td style={styles.td}>
                     <div style={styles.accCol}>
@@ -131,13 +139,13 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                           color: student.isAtRisk ? '#DC2626' : 'var(--color-deep-forest)',
                         }}
                       >
-                        {student.overallReadingAccuracy}%
+                        {student.overallReadingAccuracy == null ? '—' : `${student.overallReadingAccuracy}%`}
                       </span>
                       <div style={styles.bar}>
                         <div
                           style={{
                             ...styles.barFill,
-                            width: `${student.overallReadingAccuracy}%`,
+                            width: `${student.overallReadingAccuracy ?? 0}%`,
                             backgroundColor: student.isAtRisk ? '#EF4444' : 'var(--color-mint-teal)',
                           }}
                         />
@@ -145,13 +153,15 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({
                     </div>
                   </td>
                   <td style={styles.td}>
-                    <span style={styles.wpmVal}>{student.averageWpm} WPM</span>
+                    <span style={styles.wpmVal}>{student.averageWpm == null ? '—' : `${student.averageWpm} WPM`}</span>
                   </td>
                   <td style={styles.td}>
                     {student.isAtRisk ? (
-                      <span className="badge badge-risk">
-                        <AlertTriangle size={11} /> At Risk
+                      <span className="badge badge-risk" title={student.atRiskReason ?? ''}>
+                        <AlertTriangle size={11} /> Needs support
                       </span>
+                    ) : student.readingCount === 0 ? (
+                      <span className="badge badge-warning">Not assessed</span>
                     ) : (
                       <span className="badge badge-success">
                         <CheckCircle2 size={11} /> On Track

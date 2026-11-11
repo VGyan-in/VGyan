@@ -1,15 +1,20 @@
 import type { AssessmentLanguage } from "@/constants/content";
-import { postJson } from "@/core/api/client";
+import { ApiError, postJson } from "@/core/api/client";
 import { isServerConfigured } from "@/core/config";
-import type { ReadingAnalysis } from "@/features/reading/analyzer";
-import type { WritingMetrics } from "@/features/writing/metrics";
+import type { AlignedWord } from "@/features/reading/analyzer";
 import { normalizeWord, tokenize } from "@/features/reading/analyzer";
+
+/**
+ * AI feedback comes only from the backend (`/ai/*`, Gemini). The app never generates AI-looking
+ * feedback or writing scores locally: without a connection the attempt stays `pending` and is
+ * completed on the next sync. Deterministic metrics are computed on the phone and are never
+ * changed by the AI.
+ */
 
 export interface AiFeedback {
   summary: string;
   strengths: string[];
   improvements: string[];
-  /** Concrete next-step tips ("Read one page aloud every evening"). Absent on older records. */
   suggestions?: string[];
   /** Words the model recommends practising; for reading these are pruned to words in the passage. */
   practiceWords?: string[];
@@ -28,206 +33,99 @@ export interface WritingAssessment extends AiFeedback {
   correctedText?: string;
 }
 
-const STUB_MODEL = "local-stub";
-const STUB_PROMPT = "v0";
-
-export type ReadingFeedbackInput = Pick<
-  ReadingAnalysis,
-  "accuracy" | "wpm" | "omissions" | "practiceWords"
-> & { pace: string; referenceText?: string; transcript?: string };
-
-/**
- * Qualitative reading feedback. Metrics are computed on-device; the model only
- * writes feedback around them.
- *
- * With a server configured this calls `POST /ai/reading-feedback` (Gemini runs on
- * the backend) and throws on failure, so the attempt stays `failed` and is retried
- * when the phone is back online. Without a server it uses local rule-based feedback.
- */
-export async function requestReadingFeedback(
-  analysis: ReadingFeedbackInput,
-  language: AssessmentLanguage
-): Promise<AiFeedback> {
-  if (!isServerConfigured()) return localReadingFeedback(analysis, language);
-
-  const res = await postJson<RemoteFeedback>("/ai/reading-feedback", {
-    language,
-    reference_text: analysis.referenceText ?? "",
-    transcript: analysis.transcript ?? "",
-    metrics: {
-      accuracy: analysis.accuracy,
-      wpm: analysis.wpm,
-      pace: analysis.pace,
-      omissions: analysis.omissions,
-      practice_words: analysis.practiceWords,
-    },
-  });
-  const feedback = fromRemote(res);
-  // The model may suggest words that aren't in the passage; keep only passage words
-  // and fall back to the on-device list (as the client's Kannada prompt did).
-  if (analysis.referenceText) {
-    const vocab = new Set(tokenize(analysis.referenceText).map(normalizeWord));
-    const kept = (feedback.practiceWords ?? []).filter((w) => vocab.has(normalizeWord(w)));
-    feedback.practiceWords = (kept.length > 0 ? kept : analysis.practiceWords).slice(0, 10);
+export class AiUnavailableError extends Error {
+  constructor(message = "AI feedback needs an internet connection") {
+    super(message);
+    this.name = "AiUnavailableError";
   }
+}
+
+export interface ReadingFeedbackInput {
+  attemptId: string;
+  level: string;
+  accuracy: number;
+  wpm: number;
+  pace: string;
+  substitutions: number;
+  omissions: number;
+  insertions: number;
+  practiceWords: string[];
+  words: AlignedWord[];
+  referenceText: string;
+  transcript: string;
+}
+
+export async function requestReadingFeedback(input: ReadingFeedbackInput, language: AssessmentLanguage): Promise<AiFeedback> {
+  if (!isServerConfigured()) throw new AiUnavailableError("No server configured");
+  const res = await postJson<RemoteFeedback>(
+    "/ai/reading-feedback",
+    {
+      attempt_id: input.attemptId,
+      language,
+      level: input.level,
+      reference_text: input.referenceText,
+      transcript: input.transcript,
+      metrics: {
+        accuracy: input.accuracy,
+        wpm: input.wpm,
+        pace: input.pace,
+        substitutions: input.substitutions,
+        omissions: input.omissions,
+        insertions: input.insertions,
+        practice_words: input.practiceWords,
+      },
+      mistakes: input.words.filter((w) => w.status === "substitution" || w.status === "omission").slice(0, 40),
+    },
+    { timeoutMs: 60_000 }
+  );
+  const feedback = fromRemote(res);
+  // Defence in depth (the server prunes too): practice words must come from the passage.
+  const vocab = new Set(tokenize(input.referenceText).map(normalizeWord));
+  const kept = (feedback.practiceWords ?? []).filter((w) => vocab.has(normalizeWord(w)));
+  feedback.practiceWords = (kept.length > 0 ? kept : input.practiceWords).slice(0, 10);
   return feedback;
 }
 
-async function localReadingFeedback(
-  analysis: ReadingFeedbackInput,
-  language: AssessmentLanguage
-): Promise<AiFeedback> {
-  await new Promise((r) => setTimeout(r, 900));
-  const kn = language === "Kannada";
-  const strengths: string[] = [];
-  const improvements: string[] = [];
-
-  if (analysis.accuracy >= 90) strengths.push(kn ? "ಪದಗಳನ್ನು ಬಹಳ ನಿಖರವಾಗಿ ಓದಿದ್ದೀರಿ." : "You read the words very accurately.");
-  else if (analysis.accuracy >= 75) strengths.push(kn ? "ಹೆಚ್ಚಿನ ಪದಗಳನ್ನು ಸರಿಯಾಗಿ ಓದಿದ್ದೀರಿ." : "You read most of the words correctly.");
-  else improvements.push(kn ? "ಪ್ರತಿ ಪದವನ್ನು ನಿಧಾನವಾಗಿ ಮತ್ತು ಸ್ಪಷ್ಟವಾಗಿ ಓದಲು ಪ್ರಯತ್ನಿಸಿ." : "Try reading each word slowly and clearly.");
-
-  if (analysis.pace === "Fluent" || analysis.pace === "Steady")
-    strengths.push(kn ? "ನಿಮ್ಮ ಓದುವ ವೇಗ ಉತ್ತಮವಾಗಿದೆ." : "Your reading speed is comfortable to listen to.");
-  else if (analysis.pace === "Slow")
-    improvements.push(kn ? "ಹೆಚ್ಚು ಅಭ್ಯಾಸದಿಂದ ವೇಗ ಹೆಚ್ಚುತ್ತದೆ. ಪ್ರತಿದಿನ ಗಟ್ಟಿಯಾಗಿ ಓದಿ." : "Read aloud every day to build up speed.");
-  else improvements.push(kn ? "ಸ್ವಲ್ಪ ನಿಧಾನವಾಗಿ ಓದಿ, ವಿರಾಮ ಚಿಹ್ನೆಗಳಲ್ಲಿ ನಿಲ್ಲಿ." : "Slow down a little and pause at full stops.");
-
-  if (analysis.omissions > 2)
-    improvements.push(kn ? "ಕೆಲವು ಪದಗಳನ್ನು ಬಿಟ್ಟಿದ್ದೀರಿ. ಬೆರಳಿನಿಂದ ಸಾಲನ್ನು ಅನುಸರಿಸಿ." : "Some words were skipped. Follow the line with your finger.");
-  if (analysis.practiceWords.length > 0)
-    improvements.push(
-      (kn ? "ಈ ಪದಗಳನ್ನು ಅಭ್ಯಾಸ ಮಾಡಿ: " : "Practise these words: ") +
-        analysis.practiceWords.slice(0, 4).join(", ")
-    );
-
-  return {
-    summary: kn
-      ? `ನೀವು ${analysis.accuracy}% ನಿಖರತೆಯೊಂದಿಗೆ ನಿಮಿಷಕ್ಕೆ ${analysis.wpm} ಪದಗಳನ್ನು ಓದಿದ್ದೀರಿ.`
-      : `You read at ${analysis.wpm} words per minute with ${analysis.accuracy}% accuracy.`,
-    strengths,
-    improvements,
-    modelVersion: STUB_MODEL,
-    promptVersion: STUB_PROMPT,
-  };
-}
-
-const COMMON_MISSPELLINGS = new Set([
-  "crakers", "carefull", "hapy", "freind", "becuase", "beacuse", "beautifull",
-  "recieve", "untill", "tommorow", "wich", "thier", "realy", "alot", "wen",
-  "evry", "familly", "sweats", "favrite", "intresting", "diffrent", "togather",
-]);
-
-/**
- * Writing assessment: grammar, vocabulary, spelling scores plus feedback.
- *
- * With a server configured this calls `POST /ai/writing-assessment` and throws on
- * failure (retried later). Without a server it uses local heuristics.
- */
-export async function requestWritingAssessment(
-  text: string,
-  metrics: WritingMetrics,
-  language: AssessmentLanguage,
-  minWords: number
-): Promise<WritingAssessment> {
-  if (!isServerConfigured()) return localWritingAssessment(text, metrics, language, minWords);
-
-  const res = await postJson<RemoteWritingAssessment>("/ai/writing-assessment", {
-    language,
-    text,
-    min_words: minWords,
-    metrics: {
-      word_count: metrics.wordCount,
-      sentence_count: metrics.sentenceCount,
+export async function requestWritingAssessment(input: {
+  attemptId: string;
+  text: string;
+  language: AssessmentLanguage;
+  prompt: string;
+  minWords: number;
+  grade: string;
+}): Promise<WritingAssessment> {
+  if (!isServerConfigured()) throw new AiUnavailableError("No server configured");
+  const res = await postJson<RemoteWritingAssessment>(
+    "/ai/writing-assessment",
+    {
+      attempt_id: input.attemptId,
+      language: input.language,
+      text: input.text,
+      prompt: input.prompt,
+      grade: input.grade,
+      min_words: input.minWords,
     },
-  });
-  const base = fromRemote(res);
-  const score = num(res.score, "score");
+    { timeoutMs: 60_000 }
+  );
   return {
-    ...base,
-    grammarScore: clamp(num(res.grammar_score, "grammar_score")),
-    vocabularyScore: clamp(num(res.vocabulary_score, "vocabulary_score")),
-    spellingScore: clamp(num(res.spelling_score, "spelling_score")),
-    score: Math.max(0, Math.min(10, score)),
+    ...fromRemote(res),
+    grammarScore: bounded(res.grammar_score, 0, 100, "grammar_score"),
+    vocabularyScore: bounded(res.vocabulary_score, 0, 100, "vocabulary_score"),
+    spellingScore: bounded(res.spelling_score, 0, 100, "spelling_score"),
+    score: bounded(res.score, 0, 10, "score"),
     misspelled: strings(res.misspelled),
     correctedText: typeof res.corrected === "string" ? res.corrected : undefined,
   };
 }
 
-async function localWritingAssessment(
-  text: string,
-  metrics: WritingMetrics,
-  language: AssessmentLanguage,
-  minWords: number
-): Promise<WritingAssessment> {
-  await new Promise((r) => setTimeout(r, 1100));
-  const kn = language === "Kannada";
-  const words = tokenize(text);
-
-  const misspelled = kn
-    ? []
-    : Array.from(new Set(words.map(normalizeWord).filter((w) => COMMON_MISSPELLINGS.has(w))));
-
-  const spellingScore = clamp(100 - misspelled.length * 6 - (kn ? 10 : 0));
-
-  const sentences = text.split(/(?<=[.!?।])\s+/).filter((s) => s.trim());
-  const capitalised = kn
-    ? sentences.length
-    : sentences.filter((s) => /^[A-Z"']/.test(s.trim())).length;
-  const endsWithPunct = /[.!?।]\s*$/.test(text.trim());
-  let grammarScore = 70;
-  if (sentences.length > 0) grammarScore += (capitalised / sentences.length) * 15;
-  if (endsWithPunct) grammarScore += 5;
-  if (metrics.avgSentenceLength >= 6 && metrics.avgSentenceLength <= 20) grammarScore += 8;
-  grammarScore = clamp(grammarScore);
-
-  const vocabularyScore = clamp(
-    55 + metrics.uniqueWordRatio * 35 + Math.min(10, metrics.longWordCount)
-  );
-
-  const lengthFactor = Math.min(1, metrics.wordCount / minWords);
-  const score =
-    Math.round(((grammarScore + vocabularyScore + spellingScore) / 30) * (0.6 + 0.4 * lengthFactor) * 10) / 10;
-
-  const strengths: string[] = [];
-  const improvements: string[] = [];
-  if (vocabularyScore >= 80) strengths.push(kn ? "ವಿವಿಧ ಪದಗಳನ್ನು ಚೆನ್ನಾಗಿ ಬಳಸಿದ್ದೀರಿ." : "You used a good variety of words.");
-  if (metrics.sentenceCount >= 4) strengths.push(kn ? "ನಿಮ್ಮ ವಿಚಾರಗಳನ್ನು ಹಲವು ವಾಕ್ಯಗಳಲ್ಲಿ ವಿವರಿಸಿದ್ದೀರಿ." : "You explained your ideas across several sentences.");
-  if (spellingScore >= 95) strengths.push(kn ? "ಕಾಗುಣಿತ ಉತ್ತಮವಾಗಿದೆ." : "Your spelling is excellent.");
-  if (misspelled.length > 0) improvements.push(`Check the spelling of: ${misspelled.join(", ")}.`);
-  if (metrics.wordCount < minWords)
-    improvements.push(
-      kn
-        ? `ಕನಿಷ್ಠ ${minWords} ಪದಗಳನ್ನು ಬರೆಯಲು ಪ್ರಯತ್ನಿಸಿ.`
-        : `Try to write at least ${minWords} words.`
-    );
-  if (!kn && capitalised < sentences.length)
-    improvements.push("Start every sentence with a capital letter.");
-  if (metrics.avgSentenceLength > 20)
-    improvements.push(kn ? "ದೀರ್ಘ ವಾಕ್ಯಗಳನ್ನು ಚಿಕ್ಕದಾಗಿ ಮಾಡಿ." : "Break very long sentences into shorter ones.");
-  if (strengths.length === 0) strengths.push(kn ? "ಉತ್ತಮ ಪ್ರಯತ್ನ!" : "Good effort! Keep writing every day.");
-
-  return {
-    summary: kn
-      ? `ನೀವು ${metrics.wordCount} ಪದಗಳು ಮತ್ತು ${metrics.sentenceCount} ವಾಕ್ಯಗಳನ್ನು ಬರೆದಿದ್ದೀರಿ.`
-      : `You wrote ${metrics.wordCount} words in ${metrics.sentenceCount} sentences.`,
-    strengths,
-    improvements,
-    grammarScore,
-    vocabularyScore,
-    spellingScore,
-    score: Math.min(10, score),
-    misspelled,
-    modelVersion: STUB_MODEL,
-    promptVersion: STUB_PROMPT,
-  };
+/** True for errors worth retrying later (offline, server busy, consent not yet synced). */
+export function isRetryableAiError(e: unknown): boolean {
+  if (e instanceof AiUnavailableError) return true;
+  if (e instanceof ApiError) return e.status === null || e.status === 401 || e.status === 428 || e.status === 429 || e.status >= 500;
+  return true;
 }
 
-const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
-
-/**
- * Backend response shape. Keys match the structured-output schema used by the
- * client's Gemini prompts (working_well / needs_improvement / suggestions).
- */
+/** Response keys from backend/app/schemas.py (ReadingFeedbackOut / WritingAssessmentOut). */
 interface RemoteFeedback {
   summary?: unknown;
   working_well?: unknown;
@@ -251,8 +149,9 @@ function fromRemote(res: RemoteFeedback): AiFeedback {
   if (typeof res.model_version !== "string" || typeof res.prompt_version !== "string") {
     throw new Error("AI response is missing model_version/prompt_version");
   }
+  if (typeof res.summary !== "string" || res.summary.trim() === "") throw new Error("AI response has no summary");
   return {
-    summary: typeof res.summary === "string" ? res.summary : "",
+    summary: res.summary,
     strengths: strings(res.working_well),
     improvements: strings(res.needs_improvement),
     suggestions: strings(res.suggestions),
@@ -265,7 +164,7 @@ function fromRemote(res: RemoteFeedback): AiFeedback {
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
 
-function num(v: unknown, key: string): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`AI response has invalid ${key}`);
+function bounded(v: unknown, min: number, max: number, key: string): number {
+  if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) throw new Error(`AI response has invalid ${key}`);
   return v;
 }

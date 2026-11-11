@@ -4,31 +4,35 @@ import { postForm } from "@/core/api/client";
 import { isServerConfigured } from "@/core/config";
 
 export interface OcrResult {
+  /** Server OCR record ID; the server later checks the synced originalOcr against it. */
+  ocrId: string | null;
   text: string;
-  confidence: number;
+  /** Engine confidence (0..1) when the provider reports one; null otherwise (never estimated). */
+  confidence: number | null;
   engineVersion: string;
 }
 
 interface RemoteOcr {
+  ocr_id?: unknown;
   text?: unknown;
   confidence?: unknown;
   engine_version?: unknown;
 }
 
+export class OcrUnavailableError extends Error {
+  constructor() {
+    super("Handwriting recognition needs an internet connection");
+    this.name = "OcrUnavailableError";
+  }
+}
+
 /**
- * Handwriting OCR.
- *
- * With a server configured this sends the original photo to `POST /ocr` (OCR
- * credentials stay on the backend). Kannada needs a multi-language engine there;
- * OCR.space engine 1 rejects "kan" with E201, so the backend should use engine 2.
- * Without a server it returns a sample transcription so the correction screen
- * can still be exercised end to end.
+ * Handwriting OCR runs on the server (`POST /ocr`), which also keeps the original photo and the raw
+ * OCR text. Kannada handwriting accuracy has not been validated yet (see docs/ocr-evaluation.md),
+ * so the student always reviews and corrects the text, and both versions are stored.
  */
-export async function recognizeHandwriting(
-  imageUri: string,
-  language: AssessmentLanguage
-): Promise<OcrResult> {
-  if (!isServerConfigured()) return sampleOcr(language);
+export async function recognizeHandwriting(imageUri: string, language: AssessmentLanguage): Promise<OcrResult> {
+  if (!isServerConfigured()) throw new OcrUnavailableError();
 
   const body = new FormData();
   body.append("language", language === "Kannada" ? "kn" : "en");
@@ -42,23 +46,9 @@ export async function recognizeHandwriting(
   const res = await postForm<RemoteOcr>("/ocr", body, { timeoutMs: 120_000 });
   if (typeof res.text !== "string") throw new Error("OCR response has no text");
   return {
+    ocrId: typeof res.ocr_id === "string" ? res.ocr_id : null,
     text: res.text.trim(),
-    confidence: typeof res.confidence === "number" ? res.confidence : 0,
+    confidence: typeof res.confidence === "number" ? res.confidence : null,
     engineVersion: typeof res.engine_version === "string" ? res.engine_version : "unknown",
-  };
-}
-
-async function sampleOcr(language: AssessmentLanguage): Promise<OcrResult> {
-  await new Promise((r) => setTimeout(r, 1600));
-
-  const text =
-    language === "Kannada"
-      ? "ನಮ್ಮ ಪರಿಸರವನ್ನು ಉಳಿಸುವುದು ನಮ್ಮ ಕರ್ತವ್ಯ. ನಾವು ಹೆಚ್ಚು ಮರಗಳನ್ನು ನೆಡಬೇಕು. ನೀರನ್ನು ವ್ಯರ್ಥ ಮಾಡಬಾರದು. ಪ್ಲಾಸ್ಟಿಕ್ ಚೀಲಗಳ ಬದಲು ಬಟ್ಟೆಯ ಚೀಲ ಬಳಸಬೇಕು. ಶಾಲೆಯಲ್ಲಿ ಎಲ್ಲರೂ ಸೇರಿ ಸ್ವಚ್ಛತೆ ಮಾಡಬೇಕು."
-      : "My favourite festival is Deepavali. We clean our house and draw rangoli in front of the door. My mother makes sweets like laddu and holige. In the evening we light diyas and wear new clothes. I enjoy bursting crakers with my cousins but I am carefull. Deepavali makes every one in my family very hapy.";
-
-  return {
-    text,
-    confidence: language === "Kannada" ? 0.81 : 0.88,
-    engineVersion: "mock-ocr-0.1",
   };
 }

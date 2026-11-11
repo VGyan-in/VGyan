@@ -1,57 +1,53 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { PermissionsAndroid, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from "expo-audio";
+import { Directory, Paths } from "expo-file-system";
 import { AppIcon } from "@/components/ui/app-icon";
 import { C, FlowButton, FlowScreen, Notice } from "@/components/flow-ui";
 import { getPassage } from "@/constants/content";
+import { newId } from "@/core/auth/credentials";
+import { fromNative, putHandoff } from "@/features/reading/asr";
+import { ensureModelLoaded, getModelState, installModel, type ModelState } from "@/features/reading/models";
 import { useApp } from "@/state/app-store";
 import { formatDuration } from "@/utils/format";
+import { VgyanSpeech } from "../../../modules/vgyan-speech";
 
 const MAX_RECORDING_MS = 3 * 60 * 1000;
 const MIN_RECORDING_MS = 3000;
 
-type Phase = "idle" | "recording" | "stopping";
+type Phase = "idle" | "preparing" | "recording" | "stopping";
+
+async function ensureMicPermission(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
+  const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+  return res === PermissionsAndroid.RESULTS.GRANTED;
+}
 
 export default function ReadingRecordingScreen() {
   const router = useRouter();
   const { lang } = useApp();
+  const en = lang === "en";
   const { passageId } = useLocalSearchParams<{ passageId?: string }>();
   const passage = getPassage(passageId);
 
-  // 16 kHz mono matches what the ASR models expect.
-  const recorder = useAudioRecorder({
-    ...RecordingPresets.HIGH_QUALITY,
-    sampleRate: 16000,
-    numberOfChannels: 1,
-    bitRate: 64000,
-    directory: "document",
-    isMeteringEnabled: true,
-  });
-  const recorderState = useAudioRecorderState(recorder, 150);
-
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [level, setLevel] = useState(0);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [model, setModel] = useState<ModelState>(() => (passage ? getModelState(passage.language) : { status: "unsupported" }));
   const startedAt = useRef<number | null>(null);
+  const recognizing = useRef(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const status = await AudioModule.requestRecordingPermissionsAsync();
-        if (!status.granted) setPermissionDenied(true);
-        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-      } catch {
-        setPermissionDenied(true);
-      }
-    })();
+    if (!VgyanSpeech) return;
+    const sub = VgyanSpeech.addListener("onLevel", (e) => setLevel(Math.min(1, e.level * 3)));
+    void ensureMicPermission().then((ok) => setPermissionDenied(!ok));
+    return () => {
+      sub.remove();
+      // Leaving the screen mid-recording discards that take (nothing has been saved yet).
+      void VgyanSpeech?.cancelRecording().catch(() => {});
+    };
   }, []);
 
   useEffect(() => {
@@ -69,73 +65,95 @@ export default function ReadingRecordingScreen() {
 
   if (!passage) return <Redirect href="/reading/language" />;
 
+  const download = async () => {
+    setError(null);
+    await installModel(passage.language, setModel);
+  };
+
   const start = async () => {
     setError(null);
+    if (!VgyanSpeech) {
+      setError(en ? "Recording needs the VGyan Android app." : "ರೆಕಾರ್ಡಿಂಗ್‌ಗೆ VGyan ಆಂಡ್ರಾಯ್ಡ್ ಆ್ಯಪ್ ಬೇಕು.");
+      return;
+    }
+    if (!(await ensureMicPermission())) {
+      setPermissionDenied(true);
+      return;
+    }
+    setPermissionDenied(false);
+    setPhase("preparing");
     try {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) {
-        setPermissionDenied(true);
-        return;
-      }
-      setPermissionDenied(false);
-      await recorder.prepareToRecordAsync();
-      recorder.record();
+      // Loading the model takes a few seconds on low-end phones; do it before the student starts.
+      const spec = model.status === "ready" ? await ensureModelLoaded(passage.language) : null;
+      const dir = new Directory(Paths.document, "recordings", "tmp");
+      if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
+      const out = `${dir.uri}/${newId()}.wav`;
+      const r = await VgyanSpeech.startRecording(out, spec?.key ?? null);
+      recognizing.current = r.recognizing;
       startedAt.current = Date.now();
       setElapsedMs(0);
       setPhase("recording");
     } catch (e) {
-      setError(
-        lang === "en"
-          ? "Could not start the microphone. Please try again."
-          : "ಮೈಕ್ರೋಫೋನ್ ಪ್ರಾರಂಭಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
-      );
-      console.warn("recording start failed", e);
+      setPhase("idle");
+      setError(en ? "Could not start the microphone. Please try again." : "ಮೈಕ್ರೋಫೋನ್ ಪ್ರಾರಂಭಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.");
+      console.warn("recording start failed", e instanceof Error ? e.message : e);
     }
   };
 
   async function stop() {
-    if (phase !== "recording") return;
+    if (phase !== "recording" || !VgyanSpeech) return;
     setPhase("stopping");
-    const durationMs = startedAt.current ? Date.now() - startedAt.current : elapsedMs;
     try {
-      await recorder.stop();
+      const res = await VgyanSpeech.stopRecording();
+      if (res.durationMs < MIN_RECORDING_MS) {
+        setPhase("idle");
+        setElapsedMs(0);
+        setError(en ? "That was too short. Tap the mic and read the whole passage." : "ತುಂಬಾ ಚಿಕ್ಕದಾಗಿದೆ. ಮೈಕ್ ಒತ್ತಿ ಸಂಪೂರ್ಣ ಭಾಗವನ್ನು ಓದಿ.");
+        return;
+      }
+      const spec = model.status === "ready" ? model.spec : null;
+      const handoff = newId();
+      putHandoff(handoff, {
+        audioUri: res.uri,
+        durationMs: res.durationMs,
+        asr: recognizing.current && spec ? fromNative(res, spec.version) : null,
+      });
+      router.replace({ pathname: "/reading/processing", params: { passageId: passage!.id, handoff } });
     } catch (e) {
-      console.warn("recording stop failed", e);
-    }
-    if (durationMs < MIN_RECORDING_MS) {
       setPhase("idle");
-      setElapsedMs(0);
-      setError(
-        lang === "en"
-          ? "That was too short. Tap the mic and read the whole passage."
-          : "ತುಂಬಾ ಚಿಕ್ಕದಾಗಿದೆ. ಮೈಕ್ ಒತ್ತಿ ಸಂಪೂರ್ಣ ಭಾಗವನ್ನು ಓದಿ."
-      );
-      return;
+      setError(en ? "The recording could not be saved. Please try again." : "ರೆಕಾರ್ಡಿಂಗ್ ಉಳಿಸಲಾಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.");
+      console.warn("recording stop failed", e instanceof Error ? e.message : e);
     }
-    router.replace({
-      pathname: "/reading/processing",
-      params: {
-        passageId: passage!.id,
-        audioUri: recorder.uri ?? "",
-        durationMs: String(durationMs),
-      },
-    });
   }
 
   const cancel = async () => {
-    if (phase === "recording") {
-      try {
-        await recorder.stop();
-      } catch {}
-    }
+    if (phase === "recording") await VgyanSpeech?.cancelRecording().catch(() => {});
     router.back();
   };
 
-  // Metering is in dBFS (about -160..0); map to a 0..1 level for the pulse ring.
-  const level =
-    phase === "recording" && recorderState.metering != null
-      ? Math.max(0, Math.min(1, (recorderState.metering + 60) / 60))
-      : 0;
+  const modelNotice = (() => {
+    switch (model.status) {
+      case "missing":
+        return en
+          ? `The ${passage.language} speech model (${model.spec.sizeMb} MB) is not on this phone yet. Download it once on Wi-Fi so your reading can be checked offline. You can also record now; it will be checked after the download.`
+          : `ಧ್ವನಿ ಮಾದರಿ (${model.spec.sizeMb} MB) ಇನ್ನೂ ಈ ಫೋನ್‌ನಲ್ಲಿ ಇಲ್ಲ. ವೈ-ಫೈನಲ್ಲಿ ಒಮ್ಮೆ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ. ಈಗಲೇ ರೆಕಾರ್ಡ್ ಮಾಡಿದರೆ ಡೌನ್‌ಲೋಡ್ ನಂತರ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.`;
+      case "downloading":
+        return `${en ? "Downloading speech model" : "ಧ್ವನಿ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ"}… ${Math.round(model.progress * 100)}%`;
+      case "installing":
+        return en ? "Installing speech model…" : "ಧ್ವನಿ ಮಾದರಿ ಸ್ಥಾಪಿಸಲಾಗುತ್ತಿದೆ…";
+      case "error":
+        return `${en ? "Model download failed" : "ಡೌನ್‌ಲೋಡ್ ವಿಫಲವಾಗಿದೆ"}: ${model.message}`;
+      case "unavailable":
+        return en
+          ? "Offline speech checking for Kannada is not available yet. Your recording will be saved and checked once the Kannada speech model is released."
+          : "ಕನ್ನಡ ಧ್ವನಿ ಪರಿಶೀಲನೆ ಇನ್ನೂ ಲಭ್ಯವಿಲ್ಲ. ನಿಮ್ಮ ರೆಕಾರ್ಡಿಂಗ್ ಉಳಿಸಲಾಗುತ್ತದೆ ಮತ್ತು ಮಾದರಿ ಬಂದ ನಂತರ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.";
+      case "unsupported":
+        return en ? "Recording works in the VGyan Android app only." : "ರೆಕಾರ್ಡಿಂಗ್ VGyan ಆಂಡ್ರಾಯ್ಡ್ ಆ್ಯಪ್‌ನಲ್ಲಿ ಮಾತ್ರ.";
+      default:
+        return null;
+    }
+  })();
+  const busyModel = model.status === "downloading" || model.status === "installing";
 
   return (
     <FlowScreen
@@ -163,6 +181,10 @@ export default function ReadingRecordingScreen() {
         />
       ) : null}
       {error ? <Notice tone="warn" text={error} /> : null}
+      {modelNotice && phase === "idle" ? <Notice tone={model.status === "error" ? "error" : "info"} text={modelNotice} /> : null}
+      {(model.status === "missing" || model.status === "error") && phase === "idle" ? (
+        <FlowButton label={en ? "Download speech model" : "ಧ್ವನಿ ಮಾದರಿ ಡೌನ್‌ಲೋಡ್"} variant="secondary" onPress={download} />
+      ) : null}
 
       <View style={styles.recorderArea}>
         <Text style={styles.timer}>{formatDuration(elapsedMs)}</Text>
@@ -171,6 +193,8 @@ export default function ReadingRecordingScreen() {
             ? lang === "en" ? "Listening… tap stop when you finish" : "ಕೇಳುತ್ತಿದೆ… ಮುಗಿದಾಗ ನಿಲ್ಲಿಸಿ ಒತ್ತಿ"
             : phase === "stopping"
             ? lang === "en" ? "Saving recording…" : "ಉಳಿಸಲಾಗುತ್ತಿದೆ…"
+            : phase === "preparing"
+            ? lang === "en" ? "Preparing speech engine…" : "ಧ್ವನಿ ಎಂಜಿನ್ ಸಿದ್ಧವಾಗುತ್ತಿದೆ…"
             : lang === "en" ? "Tap the mic and start reading" : "ಮೈಕ್ ಒತ್ತಿ ಓದಲು ಪ್ರಾರಂಭಿಸಿ"}
         </Text>
 
@@ -186,7 +210,7 @@ export default function ReadingRecordingScreen() {
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={phase === "recording" ? stop : start}
-            disabled={phase === "stopping"}
+            disabled={phase === "stopping" || phase === "preparing" || busyModel}
             style={[styles.micButton, phase === "recording" && styles.micButtonRecording]}
             accessibilityRole="button"
             accessibilityLabel={phase === "recording" ? "Stop recording" : "Start recording"}

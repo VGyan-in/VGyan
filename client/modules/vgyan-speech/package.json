@@ -1,0 +1,7 @@
+{
+  "name": "vgyan-speech",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "description": "Offline 16 kHz WAV recording and Vosk speech recognition for VGyan (Android)"
+}

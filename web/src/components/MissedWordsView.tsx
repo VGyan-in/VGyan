@@ -20,7 +20,7 @@ export const MissedWordsView: React.FC<MissedWordsViewProps> = ({ missedWords })
         <div>
           <h3 style={styles.headerTitle}>Frequently Mispronounced & Skipped Words</h3>
           <p style={styles.headerSub}>
-            Aggregated phonetic error patterns extracted by Vosk ASR across all student reading sessions.
+            Reference words most often substituted or skipped across your students' synced readings (from the word-level alignment of the speech-recognition transcript).
           </p>
         </div>
         <div style={styles.langButtons}>

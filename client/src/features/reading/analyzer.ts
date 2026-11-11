@@ -28,6 +28,9 @@ export interface ReadingAnalysis {
 
 export type Pace = "Slow" | "Steady" | "Fluent" | "Fast";
 
+/** Version of the alignment/metric definitions; stored with every attempt (server mirror: app/services/analysis.py). */
+export const ANALYSIS_VERSION = "align-v1";
+
 const ZERO_WIDTH = /[​-‍﻿]/g;
 const NON_WORD = /[^\p{L}\p{M}\p{N}\s]/gu;
 

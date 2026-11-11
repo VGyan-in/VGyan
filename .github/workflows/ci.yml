@@ -9,6 +9,7 @@ on:
       - 'fix/**'
     paths:
       - 'client/**'
+      - 'shared/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches:
@@ -16,6 +17,7 @@ on:
       - develop
     paths:
       - 'client/**'
+      - 'shared/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
