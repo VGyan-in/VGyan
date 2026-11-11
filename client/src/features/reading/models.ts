@@ -18,28 +18,27 @@ export interface ModelSpec {
   sizeMb: number;
 }
 
-const env = process.env;
 
 export const MODEL_SPECS: Record<AssessmentLanguage, ModelSpec | null> = {
   // Default: Vosk small Indian-English model (Apache-2.0), 36 MB. See docs/asr-evaluation.md.
   English: {
     key: "en",
     language: "English",
-    url: env.EXPO_PUBLIC_ASR_MODEL_EN_URL || "https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip",
-    md5: env.EXPO_PUBLIC_ASR_MODEL_EN_MD5 || "62fd085f33c8c5fc01a235030e2a1fe3",
-    version: env.EXPO_PUBLIC_ASR_MODEL_EN_VERSION || "vosk-model-small-en-in-0.4",
-    sizeMb: Number(env.EXPO_PUBLIC_ASR_MODEL_EN_MB || 36),
+    url: process.env.EXPO_PUBLIC_ASR_MODEL_EN_URL || "https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip",
+    md5: process.env.EXPO_PUBLIC_ASR_MODEL_EN_MD5 || "62fd085f33c8c5fc01a235030e2a1fe3",
+    version: process.env.EXPO_PUBLIC_ASR_MODEL_EN_VERSION || "vosk-model-small-en-in-0.4",
+    sizeMb: Number(process.env.EXPO_PUBLIC_ASR_MODEL_EN_MB || 36),
   },
   // No public Kannada Vosk model exists. Recordings are kept and transcribed once the research
   // team publishes its Kannada TDNN model and sets these variables.
-  Kannada: env.EXPO_PUBLIC_ASR_MODEL_KN_URL
+  Kannada: process.env.EXPO_PUBLIC_ASR_MODEL_KN_URL
     ? {
         key: "kn",
         language: "Kannada",
-        url: env.EXPO_PUBLIC_ASR_MODEL_KN_URL,
-        md5: env.EXPO_PUBLIC_ASR_MODEL_KN_MD5 || "",
-        version: env.EXPO_PUBLIC_ASR_MODEL_KN_VERSION || "kn-custom",
-        sizeMb: Number(env.EXPO_PUBLIC_ASR_MODEL_KN_MB || 50),
+        url: process.env.EXPO_PUBLIC_ASR_MODEL_KN_URL,
+        md5: process.env.EXPO_PUBLIC_ASR_MODEL_KN_MD5 || "",
+        version: process.env.EXPO_PUBLIC_ASR_MODEL_KN_VERSION || "kn-custom",
+        sizeMb: Number(process.env.EXPO_PUBLIC_ASR_MODEL_KN_MB || 50),
       }
     : null,
 };
