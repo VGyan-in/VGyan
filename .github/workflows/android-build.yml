@@ -114,6 +114,21 @@ jobs:
           # APK size budget check (speech models are downloaded on first use, not bundled).
           for apk in dist/*.apk; do echo "$(basename "$apk"): $(du -h "$apk" | cut -f1)"; done
 
+      # A green Gradle build is not enough: fail if the offline speech engine is missing from the APK.
+      - name: Verify speech engine is packaged
+        run: |
+          for apk in dist/*.apk; do
+            for abi in arm64-v8a armeabi-v7a; do
+              for lib in libvosk.so libjnidispatch.so; do
+                unzip -l "$apk" | grep -q "lib/$abi/$lib" || { echo "::error::$lib missing for $abi in $(basename "$apk")"; exit 1; }
+              done
+            done
+            mkdir -p /tmp/dex && unzip -o -q "$apk" 'classes*.dex' -d /tmp/dex
+            grep -q -a 'expo/modules/vgyanspeech/VgyanSpeechModule' /tmp/dex/classes*.dex || { echo "::error::VgyanSpeechModule not compiled into $(basename "$apk")"; exit 1; }
+            grep -q -a 'Lorg/vosk/Recognizer;' /tmp/dex/classes*.dex || { echo "::error::Vosk classes missing"; exit 1; }
+            echo "$(basename "$apk"): Vosk native libraries (2 ABIs) and VgyanSpeechModule present"
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.out.outputs.name }}

@@ -19,8 +19,8 @@ coverage/
 *.p12
 *.key
 *.mobileprovision
-android/
-ios/
+/client/android/
+/client/ios/
 
 # Environment
 .env
