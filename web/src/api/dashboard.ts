@@ -219,5 +219,12 @@ export const adminSetStaffClasses = (id: string, classIds: string[]) =>
   request<{ id: string }>(`/admin/staff/${id}/classes`, { method: 'PUT', body: JSON.stringify(classIds) });
 export const adminDeactivateStaff = (id: string) => request<void>(`/admin/staff/${id}/deactivate`, { method: 'POST' });
 export const adminListDeletions = () => request<DeletionRequestRow[]>('/admin/deletion-requests');
+export interface StorageDeletionStatus {
+  pending: number;
+  items: { attempts: number; lastError: string | null; requestedAt: string }[];
+}
+export const adminStorageDeletions = () => request<StorageDeletionStatus>('/admin/storage-deletions');
+export const adminRetryStorageDeletions = () =>
+  request<{ deleted: number; failed: number; pending: number }>('/admin/storage-deletions/retry', { method: 'POST' });
 export const adminProcessDeletion = (id: string, action: 'complete' | 'reject', note: string) =>
   request<{ status: string }>(`/admin/deletion-requests/${id}`, { method: 'POST', body: JSON.stringify({ action, note }) });

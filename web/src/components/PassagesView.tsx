@@ -112,15 +112,21 @@ export const PassagesView: React.FC<{ classes: ClassGroup[]; selectedClass: Clas
                       </label>
                     </td>
                     <td style={ui.td}>
-                      <button
-                        style={ui.secondaryBtn}
-                        onClick={() => {
-                          setEditing(p);
-                          setIsNew(false);
-                        }}
-                      >
-                        Edit
-                      </button>
+                      {p.canEdit === false ? (
+                        <span style={ui.muted} title="Shared passages are edited by an administrator">
+                          Shared
+                        </span>
+                      ) : (
+                        <button
+                          style={ui.secondaryBtn}
+                          onClick={() => {
+                            setEditing(p);
+                            setIsNew(false);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

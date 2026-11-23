@@ -210,6 +210,8 @@ export interface Passage {
   version: number;
   isActive: boolean;
   updatedAt: string;
+  /** False for shared (seeded) passages and other teachers' passages; only an admin edits those. */
+  canEdit?: boolean;
 }
 
 export interface Assignment {

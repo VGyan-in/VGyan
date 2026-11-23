@@ -9,10 +9,13 @@ import {
   adminListSchools,
   adminListStaff,
   adminProcessDeletion,
+  adminRetryStorageDeletions,
+  adminStorageDeletions,
   adminSetStaffClasses,
   type AdminClass,
   type AdminStaff,
   type DeletionRequestRow,
+  type StorageDeletionStatus,
 } from '../api/dashboard';
 import type { Role } from '../types';
 import { formatDateTime } from '../utils/format';
@@ -23,6 +26,7 @@ export const AdminView: React.FC<{ onChanged: () => void }> = ({ onChanged }) =>
   const [classes, setClasses] = useState<AdminClass[]>([]);
   const [staff, setStaff] = useState<AdminStaff[]>([]);
   const [deletions, setDeletions] = useState<DeletionRequestRow[]>([]);
+  const [storageDel, setStorageDel] = useState<StorageDeletionStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -35,6 +39,9 @@ export const AdminView: React.FC<{ onChanged: () => void }> = ({ onChanged }) =>
         setDeletions(d);
       })
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'Could not load admin data'));
+    adminStorageDeletions()
+      .then(setStorageDel)
+      .catch(() => setStorageDel(null));
   }, []);
   useEffect(reload, [reload]);
 
@@ -207,6 +214,18 @@ export const AdminView: React.FC<{ onChanged: () => void }> = ({ onChanged }) =>
         title="Data deletion requests"
         sub="Completing a request permanently deletes the participant's attempts, recordings and images, and anonymises the account. Consent records are kept with the guardian name removed, as evidence. Follow the approved research protocol before completing."
       >
+        {storageDel && storageDel.pending > 0 && (
+          <div style={{ ...ui.filters, marginBottom: '0.6rem' }}>
+            <ErrorNote>
+              {storageDel.pending} stored file(s) from completed deletions could not be removed yet
+              {storageDel.items[0]?.lastError ? ` (last error: ${storageDel.items[0].lastError})` : ''}. They are queued, not
+              forgotten.
+            </ErrorNote>
+            <button style={ui.secondaryBtn} onClick={() => act(() => adminRetryStorageDeletions(), 'Retried file deletion')}>
+              Retry now
+            </button>
+          </div>
+        )}
         {deletions.length === 0 ? (
           <Empty>No requests.</Empty>
         ) : (
