@@ -21,7 +21,8 @@ on:
       - '.github/workflows/android-build.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Pushes cancel older push builds; a manual or tag release build is never cancelled by a push.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
