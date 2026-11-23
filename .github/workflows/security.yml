@@ -21,10 +21,10 @@ jobs:
       matrix:
         app: [client, web]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
       # Fails on any high/critical production advisory unless audit-exceptions.json documents it
       # with a reason and an expiry date.
       - name: Audit gate
@@ -34,8 +34,8 @@ jobs:
     name: pip-audit (backend)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: pip install pip-audit
@@ -46,7 +46,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       # gitleaks CLI (MIT); the GitHub Action needs a paid licence for organisations.
