@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import type { ReadingAttempt, SyncItem, WritingAttempt } from "@/types/models";
+import type { ConsentRecord, ReadingAttempt, SyncItem, WritingAttempt } from "@/types/models";
 
 jest.mock("@/core/storage/secure", () => ({
   secureStore: { get: jest.fn(async () => "tok"), set: jest.fn(), remove: jest.fn() },
 }));
-jest.mock("@/core/storage/files", () => ({ localMd5: jest.fn(() => "abc123") }));
+jest.mock("@/core/storage/files", () => ({ localMd5: jest.fn(() => "abc123"), fileSize: jest.fn(() => 6_000_000) }));
 
 const reading = (over: Partial<ReadingAttempt> = {}): ReadingAttempt => ({
   id: "r1",
@@ -61,7 +61,32 @@ function load() {
     mod = require("@/core/sync/uploader");
     mem = require("@/core/db/memory-repository");
   });
-  return { ...mod, repo: mem.createMemoryRepository() };
+  const repo = mem.createMemoryRepository({
+    ...mem.emptyState(),
+    // VG-1 is signed in on this phone and has active consent.
+    meta: { "session.participant": "VG-1" },
+    consents: { c1: consent() },
+  });
+  return { ...mod, repo };
+}
+
+function consent(over: Partial<ConsentRecord> = {}): ConsentRecord {
+  return {
+    id: "c1",
+    participantId: "VG-1",
+    consentVersion: "1.0",
+    acceptedAt: "2026-11-01T09:00:00.000Z",
+    withdrawnAt: null,
+    signerType: "guardian",
+    signerName: "Parent",
+    signerRelation: "Mother",
+    language: "en",
+    audioConsent: true,
+    handwritingConsent: true,
+    researchConsent: true,
+    status: "active",
+    ...over,
+  } as ConsentRecord;
 }
 
 let sent: { url: string; body: FormData }[] = [];
@@ -143,11 +168,46 @@ describe("uploader", () => {
     expect((await createUploader(repo)(item("reading", "r1"))).kind).toBe("fatal");
   });
 
-  it("treats a legacy 409 duplicate as received", async () => {
+  it("retries a 409 (concurrent upload) and never treats it as stored", async () => {
     const { createUploader, repo } = load();
     await repo.saveReading(reading());
-    respond(409);
-    expect((await createUploader(repo)(item("reading", "r1"))).kind).toBe("ok");
+    respond(409, { error: { code: "concurrent_upload", message: "retry" } });
+    expect((await createUploader(repo)(item("reading", "r1"))).kind).toBe("retry");
+  });
+
+  it("on an expired session (401) clears the token and waits for sign-in without using retries", async () => {
+    const { createUploader, repo } = load();
+    await repo.saveReading(reading());
+    respond(401, { error: { code: "token_expired", message: "Session expired" } });
+    const out = await createUploader(repo)(item("reading", "r1"));
+    expect(out).toMatchObject({ kind: "skip", error: expect.stringContaining("Sign in again") });
+  });
+
+  it("leaves another student's records for that student's own sign-in (shared phone)", async () => {
+    const { createUploader, repo } = load();
+    await repo.saveReading(reading({ participantId: "VG-2" }));
+    respond(200);
+    const out = await createUploader(repo)({ ...item("reading", "r1"), participantId: "VG-2" });
+    expect(out.kind).toBe("skip");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("uploads nothing new after consent is withdrawn, but still sends the withdrawal", async () => {
+    const { createUploader, repo } = load();
+    await repo.saveConsent(consent({ status: "withdrawn", withdrawnAt: "2026-11-02T09:00:00.000Z" }));
+    await repo.saveReading(reading());
+    respond(200);
+    expect((await createUploader(repo)(item("reading", "r1"))).kind).toBe("skip");
+    expect(sent).toHaveLength(0);
+    expect((await createUploader(repo)(item("consent", "c1"))).kind).toBe("ok");
+    expect(JSON.parse(String(sent[0].body.get("record"))).status).toBe("withdrawn");
+  });
+
+  it("gives large recordings enough time on a slow connection", () => {
+    const { uploadTimeoutMs } = load();
+    expect(uploadTimeoutMs(null)).toBe(120_000);
+    expect(uploadTimeoutMs(6_000_000)).toBeGreaterThan(20 * 60_000); // 3-min WAV at ~32 kbit/s
+    expect(uploadTimeoutMs(500_000_000)).toBe(30 * 60_000);
   });
 
   it("keeps the original OCR and the correction as separate fields", async () => {

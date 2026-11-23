@@ -6,7 +6,6 @@ const path = require('path');
  * so that `tsc --noEmit` and CI typechecking succeed without needing an active dev server.
  */
 function generateTypedRoutes() {
-  const appRoot = path.resolve(__dirname, '../src/app');
   const targetDir = path.resolve(__dirname, '../.expo/types');
   const targetFile = path.join(targetDir, 'router.d.ts');
 

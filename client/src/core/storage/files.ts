@@ -43,6 +43,40 @@ export function localMd5(uri: string | null | undefined): string | null {
   }
 }
 
+/** Size in bytes of a stored file, or null if it is missing. */
+export function fileSize(uri: string | null | undefined): number | null {
+  if (!uri) return null;
+  try {
+    const f = new File(uri);
+    if (!f.exists) return null;
+    return f.info().size ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes temporary recordings left behind by an interrupted take (app killed while recording,
+ * or a take that was too short). Files still referenced by a saved attempt are kept.
+ */
+export function cleanupTempRecordings(keep: Set<string>, olderThanMs = 10 * 60_000, now = Date.now()): number {
+  let removed = 0;
+  try {
+    const dir = new Directory(Paths.document, "recordings", "tmp");
+    if (!dir.exists) return 0;
+    for (const entry of dir.list()) {
+      if (entry instanceof Directory || keep.has(entry.uri)) continue;
+      const modified = entry.info().modificationTime ?? 0;
+      if (now - modified < olderThanMs) continue;
+      entry.delete();
+      removed += 1;
+    }
+  } catch (e) {
+    console.warn("temp recording cleanup failed", e instanceof Error ? e.message : e);
+  }
+  return removed;
+}
+
 export function deleteMedia(uri: string | null | undefined) {
   if (!uri) return;
   try {

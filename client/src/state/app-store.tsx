@@ -12,14 +12,14 @@ import * as Device from "expo-device";
 import * as Network from "expo-network";
 import type { Lang } from "@/constants/content";
 import { config, isServerConfigured } from "@/core/config";
-import { ApiError, postJson } from "@/core/api/client";
+import { ApiError, getJson, postJson } from "@/core/api/client";
 import { hashPassword, newId, verifyPassword } from "@/core/auth/credentials";
 import { clearAuthToken, remoteLogin, remoteRegister, syncProfile } from "@/core/auth/remote";
 import { createRepository } from "@/core/db/repository";
 import type { Repository } from "@/core/db/types";
-import { deleteMedia, localMd5, persistMedia } from "@/core/storage/files";
+import { cleanupTempRecordings, deleteMedia, localMd5, persistMedia } from "@/core/storage/files";
 import { enqueue, processQueue, resetInterrupted, retryItem } from "@/core/sync/queue";
-import { createUploader } from "@/core/sync/uploader";
+import { ACTIVE_PARTICIPANT_KEY, createUploader } from "@/core/sync/uploader";
 import { isRetryableAiError, requestReadingFeedback, requestWritingAssessment } from "@/features/feedback/ai";
 import { getWritingPrompt } from "@/constants/content";
 import { transcribeFile } from "@/features/reading/asr";
@@ -125,12 +125,19 @@ const AppContext = createContext<AppStateValue | null>(null);
 
 const META = {
   lang: "lang",
-  participant: "session.participant",
+  participant: ACTIVE_PARTICIPANT_KEY,
   lastSync: "sync.last",
   autoSync: "sync.auto",
 };
 
 const SYNC_INTERVAL_MS = 3 * 60_000;
+/** AI requests per sync run, so feedback never holds up uploads for long. */
+const FEEDBACK_PER_RUN = 6;
+
+/** "retry": offline/5xx, try on a later sync. "failed": rejected (e.g. 4xx), don't loop on it. */
+type FeedbackOutcome = "done" | "retry" | "failed" | "skip";
+
+const PROFILE_FIELDS = ["grade", "section", "school", "schoolType", "medium", "nativeLanguage", "otherLanguages", "ageGroup", "gender"] as const;
 
 function generateParticipantId() {
   return `VG-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -228,6 +235,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSync((s) => ({ ...s, lastSyncedAt: lastSync, autoSync: autoSyncRef.current }));
         if (pid && !(await loadParticipant(pid))) await repo.setMeta(META.participant, null);
         await refreshQueue();
+        // Takes interrupted by a crash or app kill leave temporary WAVs (a child's voice) behind.
+        cleanupTempRecordings(new Set(await repo.listMediaUris()));
       } catch (e) {
         console.warn("storage init failed", e);
       } finally {
@@ -250,9 +259,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ---------- Sync worker ----------
 
   const readingFeedback = useCallback(
-    async (id: string): Promise<boolean> => {
+    async (id: string): Promise<FeedbackOutcome> => {
       const a = await repo.getReading(id);
-      if (!a || a.asrStatus === "pending") return false;
+      if (!a || a.asrStatus === "pending") return "skip";
       try {
         const feedback = await requestReadingFeedback(
           { ...a, attemptId: a.id, level: a.level, referenceText: a.referenceText, transcript: a.transcript },
@@ -262,7 +271,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await repo.saveReading(next);
         await enqueue(repo, "reading", a.id, a.participantId, newId);
         setReadingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
-        return true;
+        return "done";
       } catch (e) {
         const status = isRetryableAiError(e) ? "pending" : "failed";
         if (a.aiStatus !== status) {
@@ -270,16 +279,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await repo.saveReading(next);
           setReadingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
         }
-        return false;
+        return status === "pending" ? "retry" : "failed";
       }
     },
     [repo]
   );
 
   const writingFeedback = useCallback(
-    async (id: string): Promise<boolean> => {
+    async (id: string): Promise<FeedbackOutcome> => {
       const a = await repo.getWriting(id);
-      if (!a) return false;
+      if (!a) return "skip";
       const prompt = getWritingPrompt(a.promptId);
       try {
         const assessment = await requestWritingAssessment({
@@ -303,7 +312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await repo.saveWriting(next);
         await enqueue(repo, "writing", a.id, a.participantId, newId);
         setWritingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
-        return true;
+        return "done";
       } catch (e) {
         const status = isRetryableAiError(e) ? "pending" : "failed";
         if (a.aiStatus !== status) {
@@ -311,7 +320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await repo.saveWriting(next);
           setWritingAttempts((list) => list.map((x) => (x.id === a.id ? next : x)));
         }
-        return false;
+        return status === "pending" ? "retry" : "failed";
       }
     },
     [repo, profile]
@@ -357,15 +366,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [repo, profile]);
 
-  const retryPendingFeedback = useCallback(async () => {
-    if (!profile || !isServerConfigured()) return;
+  /**
+   * Fetches feedback that is still "pending" (offline at the time). Bounded per run and stops at
+   * the first connectivity failure, so a bad connection costs one request, not one per attempt.
+   * "failed" attempts (rejected by the server) are not retried automatically.
+   */
+  const retryPendingFeedback = useCallback(async (): Promise<number> => {
+    if (!profile || !isServerConfigured() || consent?.status !== "active") return 0;
+    const jobs: (() => Promise<FeedbackOutcome>)[] = [];
     for (const a of await repo.listReading(profile.participantId)) {
-      if (a.asrStatus !== "pending" && a.aiStatus !== "completed") await readingFeedback(a.id);
+      if (a.asrStatus === "completed" && a.aiStatus === "pending") jobs.push(() => readingFeedback(a.id));
     }
     for (const a of await repo.listWriting(profile.participantId)) {
-      if (a.aiStatus !== "completed") await writingFeedback(a.id);
+      if (a.aiStatus === "pending") jobs.push(() => writingFeedback(a.id));
     }
-  }, [repo, profile, readingFeedback, writingFeedback]);
+    let done = 0;
+    for (const job of jobs.slice(0, FEEDBACK_PER_RUN)) {
+      const outcome = await job();
+      if (outcome === "done") done += 1;
+      if (outcome === "retry") break;
+    }
+    return done;
+  }, [repo, profile, consent, readingFeedback, writingFeedback]);
 
   const markSynced = useCallback(
     async (item: SyncItem) => {
@@ -407,11 +429,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSync((s) => ({ ...s, isSyncing: true }));
     try {
       await processPendingTranscriptions();
-      await refreshContent(repo);
-      if (profile) await syncProfile(repo, profile).catch(() => {});
-      await retryPendingFeedback();
+      // Uploads first: the research record must not wait behind optional AI feedback.
       const result = await processQueue(repo, uploader, { maxRetries: config.syncMaxRetries });
       for (const item of result.synced) await markSynced(item);
+      await refreshContent(repo).catch(() => {});
+      if (profile) await syncProfile(repo, profile).catch(() => {});
+      if ((await retryPendingFeedback()) > 0) {
+        // New feedback re-queued those attempts; send the updated records in the same run.
+        const again = await processQueue(repo, uploader, { maxRetries: config.syncMaxRetries });
+        for (const item of again.synced) await markSynced(item);
+        result.synced.push(...again.synced);
+        result.failed += again.failed;
+      }
       const ts = new Date().toISOString();
       if (result.synced.length > 0) await repo.setMeta(META.lastSync, ts);
       setSync((s) => ({
@@ -499,6 +528,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [repo, loadParticipant]
   );
 
+  /** After an online sign-in, uploads that stopped (expired session, retries used up) start again. */
+  const requeueAfterSignIn = useCallback(
+    async (participantId: string) => {
+      for (const item of await repo.listQueue()) {
+        if (item.participantId !== participantId) continue;
+        if (item.status === "failed" && !item.permanent) await retryItem(repo, item);
+      }
+      await refreshQueue();
+    },
+    [repo, refreshQueue]
+  );
+
+  /** A student signing in on a new phone gets their name and background details back from the server. */
+  const restoreProfileFromServer = useCallback(async (local: StudentProfile): Promise<StudentProfile> => {
+    try {
+      const remote = await getJson<Record<string, unknown>>("/student/me");
+      const next: StudentProfile = { ...local };
+      if (typeof remote.name === "string" && remote.name) next.name = remote.name;
+      if (typeof remote.email === "string") next.email = remote.email;
+      for (const k of PROFILE_FIELDS) {
+        const v = remote[k];
+        if (typeof v === "string" && v && !local[k]) next[k] = v;
+      }
+      return next;
+    } catch {
+      return local;
+    }
+  }, []);
+
   const register = useCallback(
     async (input: RegisterInput): Promise<ActionResult> => {
       const email = input.email.trim().toLowerCase();
@@ -563,7 +621,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           } else {
             const ts = new Date().toISOString();
             await repo.saveProfile(
-              {
+              await restoreProfileFromServer({
                 studentId: newId(),
                 participantId,
                 name: participantId,
@@ -579,11 +637,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 gender: "",
                 createdAt: ts,
                 updatedAt: ts,
-              },
+              }),
               credential
             );
           }
           await startSignedIn(participantId);
+          await requeueAfterSignIn(participantId);
+          autoSyncIfAllowed();
           return { ok: true };
         }
         // Offline: fall through to the copy on this phone. Any other answer from the server is final.
@@ -595,7 +655,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await startSignedIn(stored.profile.participantId);
       return { ok: true };
     },
-    [repo, startSignedIn]
+    [repo, startSignedIn, requeueAfterSignIn, restoreProfileFromServer, autoSyncIfAllowed]
   );
 
   const logout = useCallback(async () => {
@@ -804,10 +864,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateReadingAttempt,
     saveNewWriting,
     updateWritingAttempt,
-    requestFeedbackFor: readingFeedback,
+    requestFeedbackFor: async (id: string) => (await readingFeedback(id)) === "done",
     joinClass,
     requestServerDeletion,
-    requestWritingAssessmentFor: writingFeedback,
+    requestWritingAssessmentFor: async (id: string) => (await writingFeedback(id)) === "done",
     writingDraft,
     setWritingDraft,
     sync,

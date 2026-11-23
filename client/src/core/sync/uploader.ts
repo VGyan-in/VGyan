@@ -3,11 +3,14 @@ import { AUTH_TOKEN_KEY } from "@/core/api/client";
 import { config, isServerConfigured } from "@/core/config";
 import type { Repository } from "@/core/db/types";
 import { secureStore } from "@/core/storage/secure";
-import { localMd5 } from "@/core/storage/files";
+import { fileSize, localMd5 } from "@/core/storage/files";
 import type { ReadingAttempt, SyncItem, WritingAttempt } from "@/types/models";
 import type { Uploader, UploadOutcome } from "./queue";
 
 export { AUTH_TOKEN_KEY };
+
+/** Meta key holding the participant who is signed in on this phone (shared school phones). */
+export const ACTIVE_PARTICIPANT_KEY = "session.participant";
 
 const ENDPOINTS: Record<SyncItem["entityType"], string> = {
   reading: "/sync/reading",
@@ -15,7 +18,15 @@ const ENDPOINTS: Record<SyncItem["entityType"], string> = {
   consent: "/sync/consent",
 };
 
-const TIMEOUT_MS = 120_000;
+const BASE_TIMEOUT_MS = 120_000;
+const MAX_TIMEOUT_MS = 30 * 60_000;
+/** Assume a poor rural connection (~32 kbit/s) so a large WAV is not cut off mid-upload forever. */
+const SLOW_LINK_BYTES_PER_SEC = 4096;
+
+export function uploadTimeoutMs(bytes: number | null): number {
+  if (!bytes || bytes <= 0) return BASE_TIMEOUT_MS;
+  return Math.min(MAX_TIMEOUT_MS, BASE_TIMEOUT_MS + Math.ceil((bytes / SLOW_LINK_BYTES_PER_SEC) * 1000));
+}
 
 const MIME: Record<string, string> = {
   wav: "audio/wav",
@@ -65,6 +76,19 @@ export function createUploader(repo: Repository): Uploader {
     }
     const token = await secureStore.get(AUTH_TOKEN_KEY);
     if (!token) return { kind: "skip", error: "Sign in online once to upload. Data is kept on this phone." };
+    // The token belongs to whoever is signed in now. On a shared phone, another student's records
+    // wait for that student's own sign-in (sending them now would be rejected as someone else's).
+    const active = await repo.getMeta(ACTIVE_PARTICIPANT_KEY);
+    if (!active || active.toUpperCase() !== item.participantId.toUpperCase()) {
+      return { kind: "skip", error: "Waiting for this student to sign in on this phone." };
+    }
+    if (item.entityType !== "consent") {
+      // Nothing new leaves the phone after consent is withdrawn (the withdrawal itself still syncs).
+      const consent = await repo.getConsent(item.participantId);
+      if (!consent || consent.status !== "active") {
+        return { kind: "skip", error: "Consent withdrawn or missing: kept on this phone, not uploaded." };
+      }
+    }
 
     const body = new FormData();
     let fileUri: string | null = null;
@@ -103,7 +127,7 @@ export function createUploader(repo: Repository): Uploader {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), uploadTimeoutMs(fileUri && md5 ? fileSize(fileUri) : null));
     try {
       const res = await fetch(`${config.apiBaseUrl}${ENDPOINTS[item.entityType]}`, {
         method: "POST",
@@ -116,12 +140,17 @@ export function createUploader(repo: Repository): Uploader {
         await recordReceipt(repo, item, receipt?.file_md5 ?? null);
         return { kind: "ok" };
       }
-      // Older servers answered duplicates with 409; the record is there either way.
-      if (res.status === 409) return { kind: "ok" };
       const detail = await errorDetail(res);
       const msg = `HTTP ${res.status}${detail ? `: ${detail}` : ""}`;
-      // 428: consent not on the server yet (it is queued earlier and will arrive); 401: sign in again.
-      if ([401, 408, 425, 428, 429].includes(res.status) || res.status >= 500) return { kind: "retry", error: msg };
+      if (res.status === 401) {
+        // Expired or revoked session. Don't burn retry attempts: wait for the next sign-in, which
+        // stores a fresh token and puts these items back in the queue.
+        await secureStore.remove(AUTH_TOKEN_KEY);
+        return { kind: "skip", error: "Session expired. Sign in again to upload. Data is kept on this phone." };
+      }
+      // 409: the same record is being uploaded concurrently (never treat it as stored).
+      // 428: consent not on the server yet (it is queued earlier and will arrive).
+      if ([408, 409, 425, 428, 429].includes(res.status) || res.status >= 500) return { kind: "retry", error: msg };
       return { kind: "fatal", error: msg };
     } catch (e) {
       return { kind: "retry", error: e instanceof Error ? e.message : "Network error" };

@@ -460,7 +460,7 @@ export default function ProgressScreen() {
                         { label: lang === "en" ? "Spelling" : "ಕಾಗುಣಿತ", value: avgRubric.spelling },
                         { label: lang === "en" ? "Grammar & sentences" : "ವ್ಯಾಕರಣ ಮತ್ತು ವಾಕ್ಯಗಳು", value: avgRubric.grammar },
                         { label: lang === "en" ? "Vocabulary" : "ಶಬ್ದಕೋಶ", value: avgRubric.vocabulary },
-                        { label: lang === "en" ? "Handwriting clarity" : "ಕೈಬರಹದ ಸ್ಪಷ್ಟತೆ", value: avgRubric.ocr },
+                        { label: lang === "en" ? "Text recognition confidence" : "ಪಠ್ಯ ಗುರುತಿಸುವಿಕೆ ವಿಶ್ವಾಸ", value: avgRubric.ocr },
                       ]
                         .filter((r) => r.value != null)
                         .map((r) => (

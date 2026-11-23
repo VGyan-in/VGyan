@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { PermissionsAndroid, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { AppState, Linking, PermissionsAndroid, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { Directory, Paths } from "expo-file-system";
 import { AppIcon } from "@/components/ui/app-icon";
@@ -49,6 +49,25 @@ export default function ReadingRecordingScreen() {
       void VgyanSpeech?.cancelRecording().catch(() => {});
     };
   }, []);
+
+  // Android stops giving a backgrounded app microphone audio (it records silence), so a take that
+  // was interrupted by the home button, a call or the screen turning off is discarded, not scored.
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") return;
+      void VgyanSpeech?.cancelRecording().catch(() => {});
+      startedAt.current = null;
+      setElapsedMs(0);
+      setPhase("idle");
+      setError(
+        en
+          ? "Recording stopped because the app was closed or interrupted. Please read the passage again."
+          : "ಆ್ಯಪ್ ಮುಚ್ಚಿದ್ದರಿಂದ ರೆಕಾರ್ಡಿಂಗ್ ನಿಂತಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಓದಿ."
+      );
+    });
+    return () => sub.remove();
+  }, [phase, en]);
 
   useEffect(() => {
     if (phase !== "recording") return;
@@ -170,6 +189,13 @@ export default function ReadingRecordingScreen() {
         </ScrollView>
       </View>
 
+      {permissionDenied ? (
+        <FlowButton
+          label={en ? "Open app settings" : "ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ತೆರೆಯಿರಿ"}
+          variant="secondary"
+          onPress={() => void Linking.openSettings()}
+        />
+      ) : null}
       {permissionDenied ? (
         <Notice
           tone="error"

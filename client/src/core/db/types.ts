@@ -45,6 +45,9 @@ export interface Repository {
   getWriting(id: string): Promise<WritingAttempt | null>;
   saveWriting(attempt: WritingAttempt): Promise<void>;
 
+  /** Every audio/image file URI still referenced by a saved attempt (any participant). */
+  listMediaUris(): Promise<string[]>;
+
   /** Removes a participant's attempts and queue items from this device. */
   deleteParticipantData(participantId: string): Promise<void>;
 

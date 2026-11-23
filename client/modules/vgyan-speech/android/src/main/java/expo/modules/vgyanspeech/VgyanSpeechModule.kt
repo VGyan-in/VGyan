@@ -97,7 +97,13 @@ class VgyanSpeechModule : Module() {
       val out = File(toPath(outputPath))
       out.parentFile?.mkdirs()
       val s = RecordingSession(out, model) { level -> sendEvent("onLevel", mapOf("level" to level)) }
-      s.start()
+      try {
+        s.start()
+      } catch (e: Throwable) {
+        // Release the microphone and recogniser, or every later take fails with "busy".
+        s.cancel()
+        throw if (e is CodedException) e else SpeechException("ERR_MIC", "Microphone could not be started: ${e.message}", e)
+      }
       session = s
       mapOf("recognizing" to (model != null))
     }
@@ -213,9 +219,23 @@ class VgyanSpeechModule : Module() {
             raf.write(WavHeader.bytes(0))
             val buf = ByteArray(CHUNK_BYTES)
             var lastLevel = 0L
+            var errors = 0
             while (running) {
               val n = record.read(buf, 0, buf.size)
-              if (n <= 0) continue
+              if (n == AudioRecord.ERROR_DEAD_OBJECT) {
+                // The microphone was taken away (e.g. a phone call): stop rather than spin.
+                throw IllegalStateException("Microphone was interrupted")
+              }
+              if (n < 0) {
+                if (++errors > 50) throw IllegalStateException("Microphone read failed ($n)")
+                Thread.sleep(20)
+                continue
+              }
+              if (n == 0) {
+                Thread.sleep(5)
+                continue
+              }
+              errors = 0
               raf.write(buf, 0, n)
               dataBytes += n
               if (recognizer != null) queue.put(buf.copyOf(n))
@@ -231,6 +251,7 @@ class VgyanSpeechModule : Module() {
           }
         } catch (e: Throwable) {
           captureError = e
+          running = false
         }
       }
       if (recognizer != null) {
@@ -274,7 +295,7 @@ class VgyanSpeechModule : Module() {
 
     fun cancel() {
       running = false
-      runCatching { record.stop() }
+      runCatching { if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop() }
       captureThread?.join(2000)
       runCatching { record.release() }
       queue.put(ByteArray(0))
