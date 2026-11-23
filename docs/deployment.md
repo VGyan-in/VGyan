@@ -19,8 +19,14 @@ Any container host works (Railway, Render, Fly.io, a VM with Docker). It needs:
 | `OCR_PROVIDER` | `gemini` (default), `google_vision` (+ `GOOGLE_VISION_API_KEY`) or `none` |
 | `CONSENT_VERSION` | Must match the app's `EXPO_PUBLIC_CONSENT_VERSION` |
 | `WEB_CONCURRENCY` | Uvicorn workers (default 2) |
+| `TRUSTED_PROXY_HOPS` | Number of proxies that append to `X-Forwarded-For` (1 on Render/Railway/Fly/Heroku-style hosts, 2 with Cloudflare in front). Wrong values either let clients dodge rate limits (too high) or put everyone in one bucket (0 behind a proxy) |
+| `FORWARDED_ALLOW_IPS` | Peers whose forwarded headers Uvicorn trusts (default `127.0.0.1`) |
+| `LOG_FORMAT` | `json` for log aggregation |
+| `MAX_REQUEST_MB` | Request body cap (default 40) |
 
-The rate limiter keeps state in process memory. Run one instance, or add a shared store before scaling out.
+The full list is in [setup.md](setup.md#4-environment-variable-reference).
+
+The rate limiter keeps state in process memory, per worker. Run one instance, or add a shared store before scaling out.
 
 After the first deploy:
 
@@ -29,7 +35,19 @@ python -m app.cli create-admin --email admin@school.org --name "Admin"   # run i
 VGYAN_API=https://api.example.org VGYAN_ADMIN_EMAIL=... VGYAN_ADMIN_PASSWORD=... python tools/e2e/api_journey.py
 ```
 
-The E2E script creates `E2E-…` records and removes them through the audited deletion workflow.
+The E2E script creates `E2E-…` records and removes them through the audited deletion workflow. Then run
+`python -m app.cli integrity-check` in the container; it must print `"ok": true`.
+
+### Scheduled operations
+
+There is no background job runner. Schedule these with the host's cron or run them by hand:
+
+| Command | When |
+|---|---|
+| `python -m app.cli purge-storage` | Daily (no-op when nothing is queued); exit 1 means files are still queued |
+| `python -m app.cli integrity-check` | Weekly and after deletions |
+
+**Production deployment has not been done.** This audit deliberately did not deploy anything.
 
 ## Dashboard
 
@@ -38,8 +56,10 @@ The E2E script creates `E2E-…` records and removes them through the audited de
 ## Android app
 
 `android-build.yml`:
-- **Push to `main`/`feat/**`** (client changes): debug APK, uploaded as an artifact.
+- **Push to `main`/`feat/**`/`audit/**`** (client changes): debug APK, uploaded as an artifact.
 - **Tag `v*.*.*`, or manual run with `release`:** release APK and AAB, attached to a GitHub Release for tags.
+- A manual run accepts `api_base_url` to bake a different backend URL into that build only (e.g. a test tunnel).
+- Artifact names end `-offline` (no backend URL) or `-server`.
 
 Repository settings:
 

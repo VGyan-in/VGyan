@@ -14,10 +14,17 @@ VGyan assesses school students' **reading fluency** and **writing** in **English
 | Backend | [`backend/`](backend/) | FastAPI, PostgreSQL, Alembic, S3-compatible private storage, Gemini |
 | Teacher dashboard | [`web/`](web/) | React, TypeScript, Vite |
 
-Further documents:
-- [docs/asr-evaluation.md](docs/asr-evaluation.md): offline speech design, measured results, validation still required
-- [docs/ocr-and-ai.md](docs/ocr-and-ai.md): OCR providers, Kannada handwriting limitation, AI feedback rules
-- [docs/deployment.md](docs/deployment.md): deploying the backend, dashboard and Android app
+Documents:
+
+| Topic | Document |
+|---|---|
+| **Audit report (Nov 2026)** and **manual test guide** | [COMPLETE_PRODUCT_AUDIT.md](docs/COMPLETE_PRODUCT_AUDIT.md), [USER_ACCEPTANCE_TESTING.md](docs/USER_ACCEPTANCE_TESTING.md) |
+| Architecture, database, API | [architecture.md](docs/architecture.md), [database.md](docs/database.md), [api.md](docs/api.md) |
+| Setup and environment variables | [setup.md](docs/setup.md) |
+| Security, privacy, DPDP questions | [security-and-privacy.md](docs/security-and-privacy.md) |
+| Speech recognition, OCR and AI | [asr-evaluation.md](docs/asr-evaluation.md), [ocr-and-ai.md](docs/ocr-and-ai.md) |
+| Testing, device testing | [testing.md](docs/testing.md), [real-device-testing.md](docs/real-device-testing.md) |
+| Deployment, release, troubleshooting | [deployment.md](docs/deployment.md), [release-checklist.md](docs/release-checklist.md), [troubleshooting.md](docs/troubleshooting.md) |
 
 ## Data flow
 
@@ -69,11 +76,11 @@ VGYAN_API=http://localhost:8000 VGYAN_ADMIN_EMAIL=... VGYAN_ADMIN_PASSWORD=... p
 
 | Suite | Command | Covers |
 |---|---|---|
-| Backend | `cd backend && pytest` | Auth, roles, consent gating, idempotent sync, immutability, checksums, metric verification, AI/OCR validation, exports, deletion, S3 (moto), migrations |
-| App | `cd client && npm test` | Alignment (shared fixtures with the server), metrics, fluency, sync queue/backoff/lock, uploader, AI/OCR clients, content cache |
-| Dashboard | `cd web && npm test` | Login, session expiry, role-based views, student detail, notes, research export |
-| End-to-end | `tools/e2e/api_journey.py` | Full journey (22 checks) against a live server |
-| Android | GitHub Actions `android-build.yml` | Prebuild + Gradle build of the app and the Kotlin module |
+| Backend (89) | `cd backend && pytest` | Auth, roles, consent gating, idempotent sync, immutability, checksums, metric verification, AI/OCR validation (mocked providers), exports, deletion and storage-deletion queue, integrity check, size limits, rate-limit proxy handling, S3 (moto), migrations |
+| App (76) | `cd client && npm test` | Alignment (shared fixtures with the server), metrics, fluency, sync queue/backoff/lock, uploader (status handling, shared phones, withdrawn consent, timeouts), AI/OCR clients, content cache |
+| Dashboard (10) | `cd web && npm test` | Login, session expiry, role-based views, student detail, notes, research export, passage edit rights, storage-deletion alert |
+| End-to-end | `tools/e2e/api_journey.py` | Full journey (22 checks) against a live server; CI runs it against the Docker image, followed by `python -m app.cli integrity-check` |
+| Android | GitHub Actions `android-build.yml` | Prebuild + Gradle build; fails if the Vosk libraries or the speech module are missing from the APK |
 
 ## API summary
 
@@ -87,7 +94,7 @@ VGYAN_API=http://localhost:8000 VGYAN_ADMIN_EMAIL=... VGYAN_ADMIN_PASSWORD=... p
 | GET | `/teacher/me`, `/teacher/students[/{id}]`, `/teacher/analytics`, `/teacher/missed-words`, `/teacher/{reading,writing}/{id}/{audio,image}` | teacher, admin |
 | GET/POST | `/teacher/comments`, `/passages`, `/assignments` | teacher, admin |
 | GET | `/research/summary`, `/research/export?dataset=reading\|writing\|participants` | researcher, admin |
-| * | `/admin/schools`, `/admin/classes`, `/admin/staff`, `/admin/deletion-requests` | admin |
+| * | `/admin/schools`, `/admin/classes`, `/admin/staff`, `/admin/deletion-requests`, `/admin/storage-deletions` | admin |
 | GET | `/health`, `/health/ready` | public |
 
 Full interactive documentation: `/docs` on a running server.
@@ -96,7 +103,8 @@ Full interactive documentation: `/docs` on a running server.
 
 See [docs/asr-evaluation.md](docs/asr-evaluation.md) and [docs/ocr-and-ai.md](docs/ocr-and-ai.md). In short:
 - **Kannada ASR** needs a Kannada model from the research team. None exists publicly.
-- **ASR validity for children** has not been measured. On perfect synthetic readings, ASR alone costs 4–14 accuracy points.
+- **ASR validity for children** has not been measured. On synthetic speech, ASR errors lower reading accuracy by about 15 points in clean conditions and up to about 40 with noise or fast reading (default model). Scores are shown as automatic estimates.
+- **No physical-device testing** and **no real AI/OCR calls** have been done yet.
 - **Kannada handwriting OCR** has not been validated for any provider.
-- **Background sync** depends on Android's WorkManager scheduling. The foreground triggers (app opened, network back, "Sync now") are the reliable path.
+- **Background sync** depends on Android's WorkManager scheduling. The foreground triggers (app opened, network back, **Upload now**) are the reliable path.
 - **Compliance:** the consent, withdrawal and deletion features do not replace institutional ethics approval, the approved research protocol, or a legal review for children's data.

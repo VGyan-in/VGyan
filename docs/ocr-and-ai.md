@@ -44,3 +44,31 @@ photo (original, kept)  ──►  POST /ocr  ──►  raw OCR text (server re
 - Writing scores (grammar, vocabulary, spelling 0–100; overall 0–10) are AI judgements against a written rubric. They are labelled with model and prompt version. They should be compared with teacher ratings on a sample before being used as research outcomes.
 - Every generation is stored in `ai_assessments`: kind, attempt, status, model and prompt version, input hash, output or error, latency.
 - Student content goes to Gemini only when research consent is active on the server.
+
+## Verification status (2026-11-23)
+
+| What | Status |
+|---|---|
+| Request/response handling, validation, filtering, retries, time budget, error mapping | Tested with **mocked** provider responses (`backend/tests/test_ai.py`, `test_hardening.py`) |
+| Real Gemini calls (feedback, writing assessment, OCR) | **Not tested in this audit**: no API key was available. Earlier work also used simulated responses only |
+| Real Google Vision calls | **Not tested** |
+| English handwriting OCR accuracy | **Not measured** |
+| Kannada handwriting OCR accuracy | **Not measured** |
+| Tone and age-appropriateness of real AI feedback | **Not reviewed**: needs a teacher to read real outputs in English and Kannada |
+
+## Reliability and safety changes in this audit
+
+- Each AI/OCR call has a total time budget (`GEMINI_TOTAL_BUDGET_SECONDS`, default 50 s) covering retries. Before, a slow provider could hold a request for about three minutes.
+- A non-JSON provider response is a clean `502 ai_failed`, not a server error.
+- Student text (passage, transcript, writing, mistake words) cannot open or close the prompt's data tags.
+- The Google Vision key is sent in a header. It used to be in the URL, which the HTTP client logged.
+- A blank page returns `422 no_text_found` instead of a generic failure.
+- Images over 50 megapixels are refused before decoding.
+- When AI is unavailable, the app keeps feedback "pending" and retries at most 6 items per sync, stopping at the first connectivity failure. Rejected requests (4xx) are marked failed and not retried automatically. Metrics and recordings are never affected.
+
+## Before enabling AI for a pilot
+
+1. Set `GEMINI_API_KEY` on a staging server. Run 20 readings and 20 writings (English and Kannada) by adult testers, including deliberately weak answers.
+2. A teacher reviews every output for accuracy, tone ("never shaming"), language (Kannada script for Kannada) and invented facts.
+3. Check token use and cost per request in the Google console. Record the model version.
+4. Decide whether AI writing scores are shown to children at all before they are validated against teacher ratings.

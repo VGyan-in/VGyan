@@ -28,7 +28,7 @@ export class OcrUnavailableError extends Error {
 
 /**
  * Handwriting OCR runs on the server (`POST /ocr`), which also keeps the original photo and the raw
- * OCR text. Kannada handwriting accuracy has not been validated yet (see docs/ocr-evaluation.md),
+ * OCR text. Kannada handwriting accuracy has not been validated yet (see docs/ocr-and-ai.md),
  * so the student always reviews and corrects the text, and both versions are stored.
  */
 export async function recognizeHandwriting(imageUri: string, language: AssessmentLanguage): Promise<OcrResult> {
