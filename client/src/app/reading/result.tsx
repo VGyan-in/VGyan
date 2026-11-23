@@ -120,7 +120,12 @@ export default function ReadingResultScreen() {
           {languageLabel(attempt.language, lang)} • {levelLabel(attempt.level, lang)}
         </Text>
         <Text style={[styles.heroScore, { color: accuracyColor }]}>{attempt.accuracy}%</Text>
-        <Text style={styles.heroCaption}>{lang === "en" ? "Reading accuracy" : "ಓದುವ ನಿಖರತೆ"}</Text>
+        <Text style={styles.heroCaption}>{lang === "en" ? "Reading accuracy (automatic estimate)" : "ಓದುವ ನಿಖರತೆ (ಸ್ವಯಂಚಾಲಿತ ಅಂದಾಜು)"}</Text>
+        <Text style={styles.heroCaption}>
+          {lang === "en"
+            ? "The speech checker can mishear words, especially with noise around. Your teacher can listen to your recording."
+            : "ಧ್ವನಿ ಪರೀಕ್ಷಕ ಕೆಲವೊಮ್ಮೆ ಪದಗಳನ್ನು ತಪ್ಪಾಗಿ ಕೇಳಬಹುದು. ನಿಮ್ಮ ಶಿಕ್ಷಕರು ರೆಕಾರ್ಡಿಂಗ್ ಕೇಳಬಹುದು."}
+        </Text>
         <Text style={styles.heroHeadline}>{headline}</Text>
       </Card>
 

@@ -21,7 +21,9 @@ export const AtRiskWatchlist: React.FC<Props> = ({ students, onSelectStudent }) 
             <h3 style={ui.cardTitle}>Students who may need reading support</h3>
             <p style={ui.cardSub}>
               Flagged when the average accuracy of the last three readings is below 75%. This threshold is a prompt for a teacher's attention, not a validated
-              screening cut-off.
+              screening cut-off. Accuracy is measured by automatic speech recognition, which under-counts correctly read words (by
+              roughly 7 to 40 points in our synthetic tests, more with background noise or fast reading). Listen to the recording before
+              acting on a flag.
             </p>
           </div>
         </div>
