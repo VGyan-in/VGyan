@@ -83,6 +83,7 @@ def spool_upload(src: BinaryIO, kind: str) -> StoredUpload:
 class Storage(Protocol):
     def put_file(self, key: str, path: str, mime: str) -> None: ...
     def exists(self, key: str) -> bool: ...
+    def list_keys(self, prefix: str = "") -> list[str]: ...
     def get_bytes(self, key: str) -> bytes: ...
     def signed_url(self, key: str, ttl: int) -> str: ...
     def delete(self, key: str) -> None: ...
@@ -115,6 +116,15 @@ class LocalStorage:
 
     def exists(self, key: str) -> bool:
         return self._path(key).exists()
+
+    def local_path(self, key: str) -> Path:
+        return self._path(key)
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        base = self.root / prefix if prefix else self.root
+        if not base.exists():
+            return []
+        return sorted(p.relative_to(self.root).as_posix() for p in base.rglob("*") if p.is_file() and not p.name.endswith(".part"))
 
     def get_bytes(self, key: str) -> bytes:
         return self._path(key).read_bytes()
@@ -169,6 +179,12 @@ class S3Storage:
             if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
                 return False
             raise
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        keys: list[str] = []
+        for page in self.client.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=prefix):
+            keys += [o["Key"] for o in page.get("Contents", [])]
+        return sorted(keys)
 
     def get_bytes(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()

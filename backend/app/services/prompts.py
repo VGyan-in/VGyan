@@ -124,3 +124,8 @@ WRITING_SCHEMA = {
 
 def lang_rule(language: str) -> str:
     return _LANG_RULE.get(language, _LANG_RULE["English"])
+
+
+def as_data(text: str) -> str:
+    """Student text goes inside <tags>; stop it from closing or opening a tag itself."""
+    return text.replace("<", chr(0x2039)).replace(">", chr(0x203A))

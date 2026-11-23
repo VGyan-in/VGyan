@@ -1,6 +1,6 @@
 import jwt
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -60,4 +60,5 @@ def local_file(token: str):
     mime = {**AUDIO_TYPES, **IMAGE_TYPES}.get(ext, "application/octet-stream")
     if not storage.exists(key):
         raise ApiError(404, "not_found", "Not found")
-    return Response(content=storage.get_bytes(key), media_type=mime, headers={"Cache-Control": "private, no-store"})
+    # Streamed from disk rather than read into memory (recordings can be tens of MB).
+    return FileResponse(storage.local_path(key), media_type=mime, headers={"Cache-Control": "private, no-store"})

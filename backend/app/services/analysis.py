@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 
 ANALYSIS_VERSION = "align-v1"
 
+# The alignment is O(n*m) in time and memory. Real passages are a few hundred words; this bound
+# (about 2,000 x 2,000 words) keeps one request from tying up a worker with a huge pasted text.
+MAX_ALIGN_CELLS = 4_000_000
+
 _ZERO_WIDTH = re.compile("[​-‍﻿]")
 _APOSTROPHES = re.compile("[’']")
 
@@ -120,6 +124,9 @@ def analyze(reference_text: str, transcript: str, duration_ms: float) -> Analysi
 
 def verify_reading_metrics(reference_text: str, transcript: str, duration_sec: float, reported: dict) -> dict:
     """Recompute counts server-side and compare with what the device reported."""
+    if len(tokenize(reference_text)) * max(1, len(tokenize(transcript))) > MAX_ALIGN_CELLS:
+        # Too large to re-check in a request; stored as unverified (null), never as verified.
+        return {"analysis_version": ANALYSIS_VERSION, "skipped": "too_long", "verified": None, "mismatches": {}}
     a = analyze(reference_text, transcript, duration_sec * 1000)
     server = {
         "accuracy": a.accuracy,

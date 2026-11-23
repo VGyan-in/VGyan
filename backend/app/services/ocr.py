@@ -20,6 +20,9 @@ from app.services.prompts import OCR_PROMPT_VERSION, OCR_SYSTEM
 
 log = logging.getLogger("vgyan.ocr")
 
+# A 12 MB PNG can declare hundreds of megapixels; refuse anything a phone photo would never be.
+Image.MAX_IMAGE_PIXELS = 50_000_000
+
 VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
 
 _transport: httpx.BaseTransport | None = None
@@ -74,6 +77,8 @@ def _gemini(img: bytes, language: str) -> OcrOutput:
             temperature=0.0,
         )
     except gemini.GeminiError as e:
+        if str(e).startswith("Gemini returned empty output"):
+            raise ApiError(422, "no_text_found", "No handwriting was found in the photo. Retake it or type your answer.") from e
         raise ApiError(502, "ocr_failed", "Handwriting recognition failed. Please try again or type your answer.") from e
     return OcrOutput(
         text=r.text.strip(),
@@ -103,7 +108,8 @@ def _google_vision(img: bytes, language: str) -> OcrOutput:
     started = time.monotonic()
     try:
         with httpx.Client(timeout=60, transport=_transport) as client:
-            res = client.post(VISION_URL, params={"key": s.google_vision_api_key}, json=body)
+            # Key in a header, never in the URL (URLs end up in proxy and client logs).
+            res = client.post(VISION_URL, headers={"x-goog-api-key": s.google_vision_api_key}, json=body)
         res.raise_for_status()
         resp = res.json()["responses"][0]
     except Exception as e:
@@ -111,6 +117,8 @@ def _google_vision(img: bytes, language: str) -> OcrOutput:
     if "error" in resp:
         raise ApiError(502, "ocr_failed", "Handwriting recognition failed. Please try again or type your answer.")
     doc = resp.get("fullTextAnnotation") or {}
+    if not (doc.get("text") or "").strip():
+        raise ApiError(422, "no_text_found", "No handwriting was found in the photo. Retake it or type your answer.")
     confs = [b.get("confidence") for p in doc.get("pages", []) for b in p.get("blocks", []) if b.get("confidence") is not None]
     return OcrOutput(
         text=(doc.get("text") or "").strip(),

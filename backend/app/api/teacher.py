@@ -350,7 +350,9 @@ def list_comments(
     cq = select(TeacherComment).where(TeacherComment.student_id.in_(list(visible) or [uuid.uuid4()]))
     if student_id:
         cq = cq.where(TeacherComment.student_id == student_id)
-    authors = {u.id: u.full_name for u in db.scalars(select(StaffUser))}
+    comments = db.scalars(cq.order_by(TeacherComment.created_at.desc()).limit(500)).all()
+    author_ids = {c.author_id for c in comments}
+    authors = {u.id: u.full_name for u in db.scalars(select(StaffUser).where(StaffUser.id.in_(author_ids)))} if author_ids else {}
     return [
         {
             "id": str(c.id),
@@ -361,7 +363,7 @@ def list_comments(
             "category": c.category,
             "timestamp": c.created_at.isoformat(),
         }
-        for c in db.scalars(cq.order_by(TeacherComment.created_at.desc()).limit(500))
+        for c in comments
     ]
 
 
@@ -370,7 +372,7 @@ def add_comment(
     body: CommentIn, user: StaffUser = Depends(require_roles("teacher", "admin")), db: Session = Depends(get_db, scope="function")
 ):
     s = db.get(Student, body.student_id)
-    if not s:
+    if not s or not s.is_active:
         raise ApiError(404, "not_found", "Student not found")
     assert_can_view_student(db, user, s)
     c = TeacherComment(student_id=s.id, author_id=user.id, text=body.text.strip(), category=body.category)

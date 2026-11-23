@@ -32,6 +32,7 @@ from app.services.prompts import (
     WRITING_SCHEMA,
     WRITING_SYSTEM,
     WRITING_USER,
+    as_data,
     lang_rule,
 )
 from app.services.storage import get_storage, media_key, spool_upload
@@ -71,7 +72,8 @@ def reading_feedback(body: ReadingFeedbackIn, student: Student = Depends(current
     _active_consent(db, student)  # student content goes to a third-party model only with consent
     m = body.metrics
     mistakes = [w for w in body.mistakes if w.status in ("substitution", "omission")][:40]
-    mistake_lines = "\n".join(f"- {w.ref} -> {w.hyp if w.status == 'substitution' else '(skipped)'}" for w in mistakes) or "- none"
+    lines = [f"- {as_data(w.ref or '')} -> {as_data(w.hyp or '') if w.status == 'substitution' else '(skipped)'}" for w in mistakes]
+    mistake_lines = "\n".join(lines) or "- none"
     user = READING_USER.format(
         language=body.language,
         level=body.level or "unspecified",
@@ -82,8 +84,8 @@ def reading_feedback(body: ReadingFeedbackIn, student: Student = Depends(current
         omissions=m.omissions,
         insertions=m.insertions,
         mistakes=mistake_lines,
-        reference=body.reference_text,
-        transcript=body.transcript,
+        reference=as_data(body.reference_text),
+        transcript=as_data(body.transcript),
     )
     try:
         data, r = gemini.generate_json(READING_SYSTEM.format(lang_rule=lang_rule(body.language)), user, READING_SCHEMA)
@@ -120,11 +122,11 @@ def writing_assessment(body: WritingAssessIn, student: Student = Depends(current
     user = WRITING_USER.format(
         language=body.language,
         grade=body.grade or (student.profile or {}).get("grade") or "unspecified",
-        prompt=body.prompt or "(free writing)",
+        prompt=as_data(body.prompt) or "(free writing)",
         min_words=body.min_words,
         word_count=counts["word_count"],
         sentence_count=counts["sentence_count"],
-        text=body.text,
+        text=as_data(body.text),
     )
     try:
         data, r = gemini.generate_json(WRITING_SYSTEM.format(lang_rule=lang_rule(body.language)), user, WRITING_SCHEMA)

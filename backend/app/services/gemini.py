@@ -40,6 +40,14 @@ def is_configured() -> bool:
     return bool(get_settings().gemini_api_key)
 
 
+def _sleep_within(deadline: float, seconds: float) -> bool:
+    """Back off before a retry, but only if the retry can still finish inside the budget."""
+    if time.monotonic() + seconds + 2 >= deadline:
+        return False
+    time.sleep(seconds)
+    return True
+
+
 def generate(
     system: str,
     user_parts: list[dict],
@@ -59,31 +67,36 @@ def generate(
         "generationConfig": gen_cfg,
     }
     started = time.monotonic()
-    last_err: Exception | None = None
-    with httpx.Client(timeout=s.gemini_timeout_seconds, transport=_transport) as client:
+    deadline = started + s.gemini_total_budget_seconds
+    data: dict | None = None
+    with httpx.Client(transport=_transport) as client:
         for attempt in range(3):
+            remaining = deadline - time.monotonic()
+            if remaining <= 1:
+                raise GeminiError("Gemini time budget exhausted")
             try:
                 res = client.post(
                     ENDPOINT.format(model=s.gemini_model),
                     headers={"x-goog-api-key": s.gemini_api_key, "Content-Type": "application/json"},
                     json=body,
+                    timeout=min(s.gemini_timeout_seconds, remaining),
                 )
-                if res.status_code in (429, 500, 502, 503, 504) and attempt < 2:
-                    time.sleep(1.5 * (attempt + 1))
-                    continue
-                if res.status_code >= 400:
-                    # Status only: the body can echo the prompt, which contains student text.
-                    raise GeminiError(f"Gemini HTTP {res.status_code}")
-                data = res.json()
-                break
             except httpx.HTTPError as e:
-                last_err = e
-                if attempt < 2:
-                    time.sleep(1.5 * (attempt + 1))
+                if attempt < 2 and _sleep_within(deadline, 1.5 * (attempt + 1)):
                     continue
                 raise GeminiError(f"Gemini transport error: {type(e).__name__}") from e
-        else:  # pragma: no cover - loop always breaks or raises
-            raise GeminiError(str(last_err))
+            if res.status_code in (429, 500, 502, 503, 504) and attempt < 2 and _sleep_within(deadline, 1.5 * (attempt + 1)):
+                continue
+            if res.status_code >= 400:
+                # Status only: the body can echo the prompt, which contains student text.
+                raise GeminiError(f"Gemini HTTP {res.status_code}")
+            try:
+                data = res.json()
+            except ValueError as e:
+                raise GeminiError("Gemini returned a non-JSON response") from e
+            break
+    if not isinstance(data, dict):
+        raise GeminiError("Gemini returned no usable response")
 
     candidates = data.get("candidates") or []
     if not candidates:

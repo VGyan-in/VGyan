@@ -8,7 +8,12 @@ Status codes the app relies on (client/src/core/sync/uploader.ts):
   401  token expired -> retry after sign-in
   403  record belongs to another participant -> permanent failure, needs a person
   422  invalid record or an immutable source field changed -> permanent failure, needs a person
+  409  the same record is being uploaded concurrently -> retry later
+  413  file too large -> permanent failure
   428  no active research consent on the server yet -> retry later (consent may still be queued)
+
+Files are written to storage only after their checksums match the record, so a corrupted or
+mismatched upload never leaves an orphaned object behind.
 """
 
 import hashlib
@@ -19,6 +24,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
@@ -82,6 +88,14 @@ def _active_consent(db: Session, student: Student) -> ConsentRecord:
     return c
 
 
+def _own_session(db: Session, student: Student, session_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Links an attempt to an existing session only if that session is the student's own."""
+    if not session_id:
+        return None
+    existing = db.get(DeviceSession, session_id)
+    return existing.id if existing and existing.student_id == student.id else None
+
+
 def _upsert_session(db: Session, student: Student, s: SessionIn | None) -> uuid.UUID | None:
     if not s:
         return None
@@ -99,7 +113,7 @@ def _upsert_session(db: Session, student: Student, s: SessionIn | None) -> uuid.
             started_at=s.started_at,
         )
     )
-    db.flush()
+    _flush_new(db)
     return s.session_id
 
 
@@ -112,14 +126,36 @@ def _last_revision(db: Session, entity_type: str, entity_id: uuid.UUID) -> Recor
     )
 
 
-def _store_file(kind: str, upload: UploadFile, participant_id: str, attempt_id: uuid.UUID) -> tuple[StoredUpload, str]:
+def _store_file(
+    kind: str,
+    upload: UploadFile,
+    participant_id: str,
+    attempt_id: uuid.UUID,
+    expect_sha256: str | None,
+    expect_md5: str | None,
+    label: str,
+) -> tuple[StoredUpload, str]:
+    """Spools and hashes the upload, checks it against the record's checksums, and only then
+    writes it to storage (content-addressed, so a retry of the same bytes is a no-op)."""
     spooled = spool_upload(upload.file, kind)
     try:
+        if (expect_sha256 and expect_sha256.lower() != spooled.sha256) or (expect_md5 and expect_md5.lower() != spooled.md5):
+            raise ApiError(422, "integrity_mismatch", f"{label} checksum does not match the uploaded file")
         key = media_key(kind, participant_id, str(attempt_id), spooled.sha256, spooled.ext)
         get_storage().put_file(key, spooled.path, spooled.mime)
         return spooled, key
     finally:
         Path(spooled.path).unlink(missing_ok=True)
+
+
+def _flush_new(db: Session) -> None:
+    """Two uploads of the same new record can race; the loser gets a retryable 409, never a 500."""
+    try:
+        db.flush()
+    except IntegrityError as e:
+        if getattr(e.orig, "sqlstate", None) == "23505":  # unique_violation: someone inserted it first
+            raise ApiError(409, "concurrent_upload", "This record is being uploaded at the same time. It will be retried.") from e
+        raise
 
 
 def _check_immutable(existing, rec_values: dict, fields: tuple[str, ...]) -> None:
@@ -174,6 +210,7 @@ def sync_consent(record: str = Form(...), student: Student = Depends(current_stu
     db.add(
         RecordRevision(entity_type="consent", entity_id=c.id, student_id=student.id, revision=revision, payload=raw, payload_sha256=digest)
     )
+    _flush_new(db)
     audit(db, "student", student.id, f"consent.{c.status}", "consent", c.id, version=c.consent_version)
     return SyncOut(status=status, id=c.id, revision=revision)
 
@@ -196,9 +233,7 @@ def sync_reading(
     stored: StoredUpload | None = None
     key: str | None = None
     if file is not None and consent.audio_consent:
-        stored, key = _store_file("audio", file, student.participant_id, rec.id)
-        if (rec.audio_sha256 and rec.audio_sha256.lower() != stored.sha256) or (rec.audio_md5 and rec.audio_md5.lower() != stored.md5):
-            raise ApiError(422, "integrity_mismatch", "Audio checksum does not match the uploaded file")
+        stored, key = _store_file("audio", file, student.participant_id, rec.id, rec.audio_sha256, rec.audio_md5, "Audio")
 
     digest = _digest(raw)
     last = _last_revision(db, "reading", rec.id) if existing else None
@@ -235,9 +270,7 @@ def sync_reading(
             },
         )
     )
-    session_id = _upsert_session(db, student, rec.session) or (
-        rec.session_id if rec.session_id and db.get(DeviceSession, rec.session_id) else None
-    )
+    session_id = _upsert_session(db, student, rec.session) or _own_session(db, student, rec.session_id)
 
     if existing:
         # While transcription was pending the transcript was empty; the first transcript is accepted once.
@@ -297,7 +330,7 @@ def sync_reading(
             file_sha256=stored.sha256 if stored else None,
         )
     )
-    db.flush()
+    _flush_new(db)
     audit(db, "student", student.id, f"reading.{status}", "reading_attempt", rec.id, revision=revision)
     return _reading_result(status, a)
 
@@ -332,9 +365,7 @@ def sync_writing(
     stored: StoredUpload | None = None
     key: str | None = None
     if file is not None and consent.handwriting_consent:
-        stored, key = _store_file("image", file, student.participant_id, rec.id)
-        if rec.image_md5 and rec.image_md5.lower() != stored.md5:
-            raise ApiError(422, "integrity_mismatch", "Image checksum does not match the uploaded file")
+        stored, key = _store_file("image", file, student.participant_id, rec.id, None, rec.image_md5, "Image")
 
     digest = _digest(raw)
     last = _last_revision(db, "writing", rec.id) if existing else None
@@ -349,9 +380,7 @@ def sync_writing(
         "language": rec.language,
         "prompt_id": rec.prompt_id,
     }
-    session_id = _upsert_session(db, student, rec.session) or (
-        rec.session_id if rec.session_id and db.get(DeviceSession, rec.session_id) else None
-    )
+    session_id = _upsert_session(db, student, rec.session) or _own_session(db, student, rec.session_id)
     if existing:
         _check_immutable(existing, values, WRITING_IMMUTABLE)
         a = existing
@@ -400,7 +429,7 @@ def sync_writing(
             file_sha256=stored.sha256 if stored else None,
         )
     )
-    db.flush()
+    _flush_new(db)
     audit(db, "student", student.id, f"writing.{status}", "writing_attempt", rec.id, revision=revision)
     return _writing_result(status, a)
 

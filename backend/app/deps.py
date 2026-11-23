@@ -12,6 +12,13 @@ from app.db import get_db
 from app.models import ClassGroup, StaffUser, Student, TeacherClass
 
 
+def _subject(claims: dict) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(claims.get("sub")))
+    except ValueError as e:
+        raise ApiError(401, "unauthorized", "Invalid session") from e
+
+
 def _bearer(authorization: str | None) -> dict:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise ApiError(401, "unauthorized", "Sign in required")
@@ -27,7 +34,7 @@ def current_student(authorization: str | None = Header(default=None), db: Sessio
     claims = _bearer(authorization)
     if claims.get("role") != "student":
         raise ApiError(403, "forbidden", "Student account required")
-    student = db.get(Student, uuid.UUID(claims["sub"]))
+    student = db.get(Student, _subject(claims))
     if not student or not student.is_active or student.token_version != claims.get("ver"):
         raise ApiError(401, "unauthorized", "Invalid session")
     return student
@@ -37,7 +44,7 @@ def current_staff(authorization: str | None = Header(default=None), db: Session 
     claims = _bearer(authorization)
     if claims.get("role") not in ("teacher", "researcher", "admin"):
         raise ApiError(403, "forbidden", "Staff account required")
-    user = db.get(StaffUser, uuid.UUID(claims["sub"]))
+    user = db.get(StaffUser, _subject(claims))
     if not user or not user.is_active or user.token_version != claims.get("ver") or user.role != claims["role"]:
         raise ApiError(401, "unauthorized", "Invalid session")
     return user

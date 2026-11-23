@@ -308,6 +308,7 @@ class RecordRevision(Base):
     __table_args__ = (
         UniqueConstraint("entity_type", "entity_id", "revision", name="uq_revision_entity_rev"),
         Index("ix_revision_entity", "entity_type", "entity_id"),
+        Index("ix_revision_student", "student_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -419,3 +420,21 @@ class ResearchExport(Base):
     row_count: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(TS, default=utcnow, nullable=False)
+
+
+class StorageDeletion(Base):
+    """Stored objects that must be removed (participant deletion). A row stays until the object is
+    confirmed gone, so a storage outage during a deletion is retried instead of silently leaving a
+    child's recording behind. `python -m app.cli purge-storage` processes the queue."""
+
+    __tablename__ = "storage_deletions"
+    __table_args__ = (Index("ix_storage_deletion_open", "completed_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    object_key: Mapped[str] = mapped_column(String(400), nullable=False, unique=True)
+    reason: Mapped[str] = mapped_column(String(60), nullable=False)
+    deletion_request_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("deletion_requests.id", ondelete="SET NULL"), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(200))
+    requested_at: Mapped[datetime] = mapped_column(TS, default=utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(TS)

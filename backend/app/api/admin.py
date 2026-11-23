@@ -11,22 +11,17 @@ from app.core.security import hash_password
 from app.db import get_db
 from app.deps import require_roles
 from app.models import (
-    AiAssessment,
     ClassGroup,
-    ConsentRecord,
     DeletionRequest,
-    OcrRecord,
-    ReadingAttempt,
-    RecordRevision,
     School,
     StaffUser,
+    StorageDeletion,
     Student,
     TeacherClass,
-    TeacherComment,
-    WritingAttempt,
 )
 from app.schemas import ClassIn, DeletionDecisionIn, SchoolIn, StaffIn
 from app.services.audit import audit
+from app.services.deletion import delete_participant, purge_pending
 from app.services.storage import get_storage
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -156,12 +151,35 @@ def deactivate_staff(
     audit(db, "staff", user.id, "admin.staff_deactivate", "staff", staff_id)
 
 
+def pending_storage_deletions(db: Session) -> int:
+    return db.scalar(select(func.count()).select_from(StorageDeletion).where(StorageDeletion.completed_at.is_(None))) or 0
+
+
+@router.get("/storage-deletions")
+def storage_deletions(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
+    """Objects queued for deletion that storage has not yet confirmed removed (retry with the CLI)."""
+    rows = db.scalars(select(StorageDeletion).where(StorageDeletion.completed_at.is_(None)).order_by(StorageDeletion.id).limit(200))
+    return {
+        "pending": pending_storage_deletions(db),
+        "items": [{"attempts": r.attempts, "lastError": r.last_error, "requestedAt": r.requested_at.isoformat()} for r in rows],
+    }
+
+
+@router.post("/storage-deletions/retry")
+def retry_storage_deletions(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
+    result = purge_pending(db, get_storage())
+    audit(db, "staff", user.id, "admin.storage_purge", None, None, **result)
+    return {**result, "pending": pending_storage_deletions(db)}
+
+
 @router.get("/deletion-requests")
 def list_deletion_requests(user: StaffUser = Depends(require_roles("admin")), db: Session = Depends(get_db, scope="function")):
+    q = select(Student.id, Student.participant_id).join(DeletionRequest, DeletionRequest.student_id == Student.id)
+    pids = dict(db.execute(q).all())
     return [
         {
             "id": str(r.id),
-            "participantId": r.student_id and db.get(Student, r.student_id).participant_id,
+            "participantId": pids.get(r.student_id),
             "reason": r.reason,
             "status": r.status,
             "requestedAt": r.requested_at.isoformat(),
@@ -195,41 +213,18 @@ def process_deletion(
         audit(db, "staff", user.id, "admin.deletion_rejected", "deletion_request", req.id)
         return {"id": str(req.id), "status": req.status}
 
-    sid = req.student_id
-    storage = get_storage()
-    keys: list[str] = []
-    for a in db.scalars(select(ReadingAttempt).where(ReadingAttempt.student_id == sid)):
-        keys += [a.audio_key] if a.audio_key else []
-    for a in db.scalars(select(WritingAttempt).where(WritingAttempt.student_id == sid)):
-        keys += [a.image_key] if a.image_key else []
-    for o in db.scalars(select(OcrRecord).where(OcrRecord.student_id == sid)):
-        keys += [o.image_key] if o.image_key else []
-    keys += [r.file_key for r in db.scalars(select(RecordRevision).where(RecordRevision.student_id == sid)) if r.file_key]
-
-    counts = {}
-    for model in (RecordRevision, AiAssessment, ReadingAttempt, WritingAttempt, TeacherComment):
-        counts[model.__tablename__] = db.execute(delete(model).where(model.student_id == sid)).rowcount
-    # writing_attempts references ocr_records, so OCR rows go after the attempts.
-    counts["ocr_records"] = db.execute(delete(OcrRecord).where(OcrRecord.student_id == sid)).rowcount
-    for c in db.scalars(select(ConsentRecord).where(ConsentRecord.student_id == sid)):
-        c.signer_name = "[deleted]"
-        if c.status == "active":
-            c.status = "withdrawn"
-            c.withdrawn_at = datetime.now(UTC)
-    s = db.get(Student, sid)
-    s.full_name = "[deleted]"
-    s.email = None
-    s.profile = {}
-    s.is_active = False
-    s.token_version += 1
-    s.password_hash = "!deleted"
-
-    failed = 0
-    for k in set(keys):
-        try:
-            storage.delete(k)
-        except Exception:
-            failed += 1
+    counts = delete_participant(db, req.student_id, req.id)
     req.status = "completed"
-    audit(db, "staff", user.id, "admin.deletion_completed", "deletion_request", req.id, files=len(set(keys)), file_errors=failed, **counts)
-    return {"id": str(req.id), "status": req.status, "deleted": counts, "filesDeleted": len(set(keys)) - failed, "fileErrors": failed}
+    audit(db, "staff", user.id, "admin.deletion_completed", "deletion_request", req.id, **counts)
+    # Make the row deletions and the storage queue durable before touching any object.
+    db.commit()
+    purge = purge_pending(db, get_storage())
+    audit(db, "staff", user.id, "admin.storage_purge", "deletion_request", req.id, **purge)
+    return {
+        "id": str(req.id),
+        "status": req.status,
+        "deleted": {k: v for k, v in counts.items() if k != "files_queued"},
+        "filesDeleted": purge["deleted"],
+        "fileErrors": purge["failed"],
+        "filesPendingRetry": pending_storage_deletions(db),
+    }

@@ -41,6 +41,20 @@ def _j(v) -> str:
     return json.dumps(v, ensure_ascii=False) if v is not None else ""
 
 
+_FORMULA_START = ("=", "+", "-", "@", chr(9), chr(13))
+
+
+def csv_safe(v):
+    """Neutralises spreadsheet formula injection (a child's text such as "=HYPERLINK(...)").
+
+    Text cells that begin with a formula character get a leading apostrophe, which spreadsheet
+    software shows as text. Numbers are untouched. Analysis code reading the CSV should strip a
+    leading apostrophe from text fields (documented in docs/security-and-privacy.md)."""
+    if isinstance(v, str) and v.startswith(_FORMULA_START):
+        return "'" + v
+    return v
+
+
 def _rows(db: Session, dataset: str, language: str | None, start: date | None, end: date | None):
     studs = consented_students(db)
     if dataset == "participants":
@@ -72,6 +86,7 @@ def _rows(db: Session, dataset: str, language: str | None, start: date | None, e
             "passage_id",
             "reference_text",
             "transcript",
+            "asr_status",
             "asr_model_version",
             "asr_confidence",
             "duration_sec",
@@ -104,6 +119,7 @@ def _rows(db: Session, dataset: str, language: str | None, start: date | None, e
                 a.passage_id,
                 a.reference_text,
                 a.transcript,
+                a.asr_status,
                 a.asr_model_version,
                 a.asr_confidence,
                 a.duration_sec,
@@ -199,18 +215,20 @@ def export(
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(header)
-    w.writerows(rows)
+    w.writerows([[csv_safe(v) for v in row] for row in rows])
     # UTF-8 BOM so spreadsheet software shows Kannada text correctly.
     data = ("﻿" + buf.getvalue()).encode("utf-8")
     digest = hashlib.sha256(data).hexdigest()
     filters = {"language": language, "start": str(start) if start else None, "end": str(end) if end else None}
-    db.add(ResearchExport(requested_by=user.id, dataset=dataset, filters=filters, row_count=len(rows), sha256=digest))
-    audit(db, "staff", user.id, "research.export", "dataset", dataset, rows=len(rows), sha256=digest)
+    rec = ResearchExport(requested_by=user.id, dataset=dataset, filters=filters, row_count=len(rows), sha256=digest)
+    db.add(rec)
+    db.flush()
+    audit(db, "staff", user.id, "research.export", "dataset", dataset, rows=len(rows), sha256=digest, export_id=str(rec.id))
     name = f"vgyan-{dataset}-{date.today().isoformat()}.csv"
     return Response(
         content=data,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Content-SHA256": digest},
+        headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Content-SHA256": digest, "X-Export-ID": str(rec.id)},
     )
 
 

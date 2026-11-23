@@ -52,6 +52,7 @@ def _database(tmp_path_factory):
 
 
 TABLES = [
+    "storage_deletions",
     "audit_log",
     "research_exports",
     "deletion_requests",
@@ -80,6 +81,11 @@ def _clean():
 
     reset_storage()
     limiter.reset()
+    import shutil
+    from pathlib import Path
+
+    for child in Path(os.environ["LOCAL_STORAGE_DIR"]).glob("*"):
+        shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink(missing_ok=True)
     from sqlalchemy.dialects.postgresql import insert
 
     from app.models import Passage

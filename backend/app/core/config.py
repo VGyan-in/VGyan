@@ -34,7 +34,10 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
-    gemini_timeout_seconds: float = 60.0
+    gemini_timeout_seconds: float = 30.0
+    # Upper bound for one AI/OCR call including retries, so a slow provider cannot hold a worker
+    # (and the phone's request) for minutes.
+    gemini_total_budget_seconds: float = 50.0
 
     # "gemini": Gemini vision with a transcription-only prompt (no confidence score).
     # "google_vision": Cloud Vision DOCUMENT_TEXT_DETECTION (returns confidence).
@@ -44,6 +47,13 @@ class Settings(BaseSettings):
 
     allow_student_registration: bool = True
     rate_limit_enabled: bool = True
+    # Number of reverse proxies in front of the API that append to X-Forwarded-For. 0 means the
+    # header is ignored (it is client-controlled and would let anyone dodge the rate limits).
+    trusted_proxy_hops: int = 0
+    # Hard cap on any request body, enforced before the body is read (multipart uploads are
+    # spooled to disk by the framework before the endpoint's own per-file limits run).
+    max_request_mb: int = 40
+    log_format: Literal["text", "json"] = "text"
     public_base_url: str = "http://localhost:8000"
 
     # Consent text version the app currently shows. Older versions are still accepted
@@ -67,6 +77,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET must be a random value of at least 32 characters in production")
             if self.storage_backend != "s3" or not self.s3_bucket:
                 raise ValueError("Production requires STORAGE_BACKEND=s3 and S3_BUCKET (a private bucket)")
+            if "*" in self.cors_origin_list:
+                raise ValueError("CORS_ORIGINS must list the dashboard origin(s) explicitly in production, not '*'")
         return self
 
     @property

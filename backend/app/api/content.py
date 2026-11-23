@@ -19,7 +19,10 @@ _TEXT_FIELDS = ("text", "kannada_text", "title", "kannada_title", "language", "l
 
 @router.get("/passages")
 def list_passages(user: StaffUser = Depends(current_staff), db: Session = Depends(get_db, scope="function")):
-    return [passage_out(p) for p in db.scalars(select(Passage).order_by(Passage.kind, Passage.language, Passage.id))]
+    return [
+        {**passage_out(p), "canEdit": user.role == "admin" or p.created_by == user.id}
+        for p in db.scalars(select(Passage).order_by(Passage.kind, Passage.language, Passage.id))
+    ]
 
 
 @router.post("/passages", status_code=201)
@@ -47,6 +50,10 @@ def update_passage(
     p = db.get(Passage, passage_id)
     if not p:
         raise ApiError(404, "not_found", "Passage not found")
+    # Passages are shared by every class. Teachers may edit only what they created; the seeded
+    # research passages and other teachers' passages are changed by an administrator.
+    if user.role != "admin" and p.created_by != user.id:
+        raise ApiError(403, "forbidden", "Only the teacher who created this passage (or an administrator) can edit it")
     if body.id != passage_id:
         raise ApiError(422, "id_mismatch", "Passage ID cannot change")
     data = body.model_dump()
