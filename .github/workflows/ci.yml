@@ -7,8 +7,10 @@ on:
       - develop
       - 'feat/**'
       - 'fix/**'
+      - 'audit/**'
     paths:
       - 'client/**'
+      - 'shared/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches:
@@ -16,6 +18,7 @@ on:
       - develop
     paths:
       - 'client/**'
+      - 'shared/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -32,12 +35,12 @@ jobs:
         working-directory: client
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
@@ -55,12 +58,12 @@ jobs:
         working-directory: client
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
@@ -78,12 +81,12 @@ jobs:
         working-directory: client
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
@@ -94,7 +97,7 @@ jobs:
         run: npm run test:ci
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: jest-coverage-report
@@ -109,12 +112,12 @@ jobs:
         working-directory: client
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
@@ -132,12 +135,12 @@ jobs:
         working-directory: client
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 

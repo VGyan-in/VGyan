@@ -1,213 +1,71 @@
-import React from 'react';
-import { Image as ImageIcon, Sparkles, FileText } from 'lucide-react';
-import { Student } from '../types';
+import React, { useMemo, useState } from 'react';
+import { PenTool } from 'lucide-react';
+import type { Student, WritingAssessment } from '../types';
+import { fmt, formatDateTime } from '../utils/format';
+import { WritingDetail } from './StudentDetailModal';
+import { Card, Empty, ui } from './ui';
 
-interface WritingSubmissionsViewProps {
-  students: Student[];
-}
-
-export const WritingSubmissionsView: React.FC<WritingSubmissionsViewProps> = ({ students }) => {
-  const allWriting = students.flatMap((s) => s.recentWritingAttempts);
+export const WritingSubmissionsView: React.FC<{ students: Student[] }> = ({ students }) => {
+  const [lang, setLang] = useState<'all' | 'English' | 'Kannada'>('all');
+  const [method, setMethod] = useState<'all' | 'typed' | 'image'>('all');
+  const [open, setOpen] = useState<string | null>(null);
+  const all = useMemo(
+    () =>
+      students
+        .flatMap((s) => s.recentWritingAttempts)
+        .filter((w) => lang === 'all' || w.language === lang)
+        .filter((w) => method === 'all' || (method === 'typed' ? w.inputMethod === 'typed' : w.inputMethod !== 'typed'))
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [students, lang, method],
+  );
 
   return (
-    <div style={styles.container} className="fade-in">
-      <div style={styles.header}>
-        <div>
-          <h3 style={styles.title}>Student Writing Submissions & OCR Evaluations</h3>
-          <p style={styles.subtitle}>
-            Review digitized student handwritten pages and typed essays evaluated by the Gemini writing proxy.
-          </p>
-        </div>
-        <span className="badge badge-forest">{allWriting.length} Submissions</span>
-      </div>
-
-      <div style={styles.list}>
-        {allWriting.map((item) => (
-          <div key={item.id} style={styles.card}>
-            <div style={styles.cardTop}>
-              <div style={styles.studentInfo}>
-                <span style={styles.avatar}>{item.studentName.slice(0, 2).toUpperCase()}</span>
-                <div>
-                  <h4 style={styles.name}>{item.studentName}</h4>
-                  <span style={styles.meta}>
-                    {item.studentId} • {item.participantId} • Prompt: <strong>"{item.promptTitle}"</strong>
-                  </span>
-                </div>
-              </div>
-              <div style={styles.topRight}>
-                <span className="badge badge-teal">
-                  {item.mode === 'handwritten_photo' ? 'Handwritten OCR' : 'Typed Essay'}
-                </span>
-                <span className="badge badge-forest">Score: {item.grammarScore}/100</span>
-              </div>
-            </div>
-
-            {/* Comparison Box */}
-            <div style={styles.bodyGrid}>
-              {item.rawOcrText && (
-                <div style={styles.col}>
-                  <div style={styles.colHeader}>
-                    <ImageIcon size={14} color="var(--color-slate-500)" />
-                    <span>Raw OCR Output (Backend OCR Space):</span>
-                  </div>
-                  <div style={styles.textBox}>{item.rawOcrText}</div>
-                </div>
-              )}
-
-              <div style={styles.col}>
-                <div style={styles.colHeader}>
-                  <FileText size={14} color="var(--color-deep-forest)" />
-                  <span>Student Final Corrected Text:</span>
-                </div>
-                <div style={{ ...styles.textBox, backgroundColor: '#FFFFFF', borderColor: 'var(--color-leaf-tint)' }}>
-                  {item.studentCorrectedText}
-                </div>
-              </div>
-            </div>
-
-            {/* AI Feedback */}
-            <div style={styles.aiBox}>
-              <div style={styles.aiHeader}>
-                <Sparkles size={14} color="#059669" />
-                <span style={styles.aiTitle}>AI Feedback on Grammar, Vocabulary & Structure:</span>
-              </div>
-              <p style={styles.aiText}>{item.aiFeedback}</p>
-            </div>
+    <div style={ui.page} className="fade-in">
+      <Card
+        title="Writing submissions"
+        sub="Most recent writing per student. Handwritten answers show the original OCR output next to the text the student corrected and submitted."
+        right={
+          <div style={ui.filters}>
+            <select style={ui.input} value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} aria-label="Language">
+              <option value="all">All languages</option>
+              <option>English</option>
+              <option>Kannada</option>
+            </select>
+            <select style={ui.input} value={method} onChange={(e) => setMethod(e.target.value as typeof method)} aria-label="Input method">
+              <option value="all">Typed and handwritten</option>
+              <option value="typed">Typed</option>
+              <option value="image">Handwritten (photo)</option>
+            </select>
           </div>
-        ))}
-      </div>
+        }
+      >
+        {all.length === 0 ? (
+          <Empty>No writing has been synced for this class yet.</Empty>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+            {all.map((w: WritingAssessment) => (
+              <div key={w.id} style={styles.item}>
+                <button style={styles.head} onClick={() => setOpen(open === w.id ? null : w.id)} aria-expanded={open === w.id}>
+                  <PenTool size={15} color="var(--color-deep-forest)" />
+                  <strong>{w.studentName}</strong>
+                  <code style={ui.code}>{w.participantId}</code>
+                  <span style={ui.muted}>{w.promptTitle}</span>
+                  <span className="badge badge-forest">{w.language}</span>
+                  <span className="badge badge-teal">{w.inputMethod === 'typed' ? 'Typed' : 'Handwritten'}</span>
+                  <span style={{ ...ui.muted, marginLeft: 'auto' }}>{formatDateTime(w.date)}</span>
+                  <strong style={{ color: 'var(--color-deep-forest)' }}>{w.score != null ? `${fmt(w.score)}/10` : w.aiStatus}</strong>
+                </button>
+                {open === w.id && <WritingDetail w={w} />}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 };
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.25rem',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid var(--color-slate-200)',
-    borderRadius: 'var(--radius-lg)',
-    padding: '1.25rem 1.5rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: {
-    fontSize: '1.15rem',
-    fontWeight: 700,
-    color: 'var(--color-deep-forest)',
-  },
-  subtitle: {
-    fontSize: '0.82rem',
-    color: 'var(--color-slate-500)',
-    marginTop: '0.2rem',
-  },
-  list: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.25rem',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid var(--color-slate-200)',
-    borderRadius: 'var(--radius-lg)',
-    padding: '1.35rem',
-    boxShadow: 'var(--shadow-sm)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  cardTop: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: '0.75rem',
-  },
-  studentInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-  },
-  avatar: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '50%',
-    backgroundColor: 'var(--color-light-green)',
-    color: 'var(--color-deep-forest)',
-    fontWeight: 700,
-    fontSize: '0.82rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  name: {
-    fontSize: '1.05rem',
-    fontWeight: 700,
-    color: 'var(--color-deep-forest)',
-  },
-  meta: {
-    fontSize: '0.78rem',
-    color: 'var(--color-slate-500)',
-  },
-  topRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-  },
-  bodyGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '1rem',
-  },
-  col: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  colHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    fontSize: '0.74rem',
-    fontWeight: 700,
-    color: 'var(--color-slate-600)',
-    textTransform: 'uppercase',
-  },
-  textBox: {
-    backgroundColor: 'var(--color-soft-cream)',
-    border: '1px solid var(--color-slate-200)',
-    borderRadius: 'var(--radius-md)',
-    padding: '0.85rem',
-    fontSize: '0.86rem',
-    lineHeight: 1.45,
-    color: 'var(--color-slate-800)',
-    minHeight: '70px',
-  },
-  aiBox: {
-    backgroundColor: '#F0FDF4',
-    border: '1px solid #BBF7D0',
-    borderRadius: 'var(--radius-md)',
-    padding: '0.85rem 1rem',
-  },
-  aiHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    marginBottom: '0.25rem',
-  },
-  aiTitle: {
-    fontSize: '0.76rem',
-    fontWeight: 700,
-    color: '#166534',
-    textTransform: 'uppercase',
-  },
-  aiText: {
-    fontSize: '0.84rem',
-    color: '#14532D',
-    lineHeight: 1.4,
-  },
+  item: { border: '1px solid var(--color-slate-200)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' },
+  head: { width: '100%', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', background: 'var(--color-soft-cream-alt)', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '0.88rem' },
 };

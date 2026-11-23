@@ -18,7 +18,7 @@ export async function persistMedia(
   try {
     const dir = new Directory(Paths.document, kind, participantId, sessionId);
     if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
-    const ext = extensionOf(sourceUri) ?? (kind === "recordings" ? "m4a" : "jpg");
+    const ext = extensionOf(sourceUri) ?? (kind === "recordings" ? "wav" : "jpg");
     const target = new File(dir, `${attemptId}.${ext}`);
     if (target.exists) target.delete();
     // Move rather than copy so the recorder/picker output isn't left behind as a duplicate.
@@ -29,6 +29,52 @@ export async function persistMedia(
     console.warn("persistMedia failed; keeping original file", e);
     return sourceUri;
   }
+}
+
+/** MD5 of a stored file (used to confirm the server holds the identical bytes before any purge). */
+export function localMd5(uri: string | null | undefined): string | null {
+  if (!uri) return null;
+  try {
+    const f = new File(uri);
+    if (!f.exists) return null;
+    return f.info({ md5: true }).md5 ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Size in bytes of a stored file, or null if it is missing. */
+export function fileSize(uri: string | null | undefined): number | null {
+  if (!uri) return null;
+  try {
+    const f = new File(uri);
+    if (!f.exists) return null;
+    return f.info().size ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes temporary recordings left behind by an interrupted take (app killed while recording,
+ * or a take that was too short). Files still referenced by a saved attempt are kept.
+ */
+export function cleanupTempRecordings(keep: Set<string>, olderThanMs = 10 * 60_000, now = Date.now()): number {
+  let removed = 0;
+  try {
+    const dir = new Directory(Paths.document, "recordings", "tmp");
+    if (!dir.exists) return 0;
+    for (const entry of dir.list()) {
+      if (entry instanceof Directory || keep.has(entry.uri)) continue;
+      const modified = entry.info().modificationTime ?? 0;
+      if (now - modified < olderThanMs) continue;
+      entry.delete();
+      removed += 1;
+    }
+  } catch (e) {
+    console.warn("temp recording cleanup failed", e instanceof Error ? e.message : e);
+  }
+  return removed;
 }
 
 export function deleteMedia(uri: string | null | undefined) {

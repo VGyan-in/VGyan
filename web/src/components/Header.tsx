@@ -1,14 +1,15 @@
 import React from 'react';
-import { CheckCircle2, Globe, Calendar } from 'lucide-react';
+import { RefreshCw, Globe, Calendar } from 'lucide-react';
 import { ClassGroup } from '../types';
 
 interface HeaderProps {
   title: string;
   subtitle: string;
-  activeClass: ClassGroup;
+  activeClass: ClassGroup | null;
   lang: 'en' | 'kn';
   onToggleLang: () => void;
-  onRefreshSync?: () => void;
+  loadedAt: Date | null;
+  onRefresh: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,24 +18,26 @@ export const Header: React.FC<HeaderProps> = ({
   activeClass,
   lang,
   onToggleLang,
+  loadedAt,
+  onRefresh,
 }) => {
   return (
     <header style={styles.header}>
       <div>
         <div style={styles.titleRow}>
           <h2 style={styles.title}>{title}</h2>
-          <span style={styles.classChip}>{activeClass.name}</span>
+          {activeClass && <span style={styles.classChip}>{activeClass.name}</span>}
         </div>
         <p style={styles.subtitle}>{subtitle}</p>
       </div>
 
       <div style={styles.actionsRow}>
-        {/* Sync Cycle Status Indicator (Complies with SRS gate: teacher sees assessment within 1 sync cycle) */}
-        <div style={styles.syncStatusChip} title="Tablet sync queue status">
-          <div style={styles.pulseDot} />
-          <CheckCircle2 size={14} color="#059669" />
-          <span style={styles.syncText}>Tablet Sync: Active (Cycle #48)</span>
-        </div>
+        {loadedAt && (
+          <button onClick={onRefresh} style={styles.syncStatusChip} title="Reload data from the server">
+            <RefreshCw size={14} color="#059669" />
+            <span style={styles.syncText}>Updated {loadedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+          </button>
+        )}
 
         {/* Language Switcher */}
         <button
@@ -98,6 +101,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
   },
   syncStatusChip: {
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     gap: '0.45rem',

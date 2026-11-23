@@ -118,6 +118,12 @@ export function createMemoryRepository(
       commit();
     },
 
+    async listMediaUris() {
+      return [
+        ...Object.values(s.reading).map((a) => a.audioUri),
+        ...Object.values(s.writing).map((a) => a.imageUri),
+      ].filter((u): u is string => !!u);
+    },
     async deleteParticipantData(pid) {
       for (const [id, a] of Object.entries(s.reading)) if (a.participantId === pid) delete s.reading[id];
       for (const [id, a] of Object.entries(s.writing)) if (a.participantId === pid) delete s.writing[id];

@@ -1,0 +1,8 @@
+[
+  {
+    "advisory": "https://github.com/advisories/GHSA-qr28-fpjm-wq7f",
+    "package": "decode-uri-component (via expo-router > query-string)",
+    "reason": "DoS on malformed percent-encoding while parsing in-app routes on the device itself; no server exposure. The patched release is ESM-only and breaks query-string@7's require(); the fix ships with Expo SDK 58 (expo-router 58). Upgrade the SDK before this date.",
+    "expires": "2027-02-28"
+  }
+]

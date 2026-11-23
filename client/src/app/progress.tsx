@@ -35,7 +35,8 @@ export default function ProgressScreen() {
     const inRange = (a: { createdAt: string }) =>
       days == null || now - new Date(a.createdAt).getTime() <= days * 86400000;
     return {
-      reading: readingAttempts.filter(inRange),
+      // Recordings waiting for a speech model have no metrics yet; never average them as 0.
+      reading: readingAttempts.filter((a) => a.asrStatus !== "pending").filter(inRange),
       writing: writingAttempts
         .filter(inRange)
         .filter((a) => a.aiStatus !== "pending" && a.aiStatus !== "failed"),
@@ -459,7 +460,7 @@ export default function ProgressScreen() {
                         { label: lang === "en" ? "Spelling" : "ಕಾಗುಣಿತ", value: avgRubric.spelling },
                         { label: lang === "en" ? "Grammar & sentences" : "ವ್ಯಾಕರಣ ಮತ್ತು ವಾಕ್ಯಗಳು", value: avgRubric.grammar },
                         { label: lang === "en" ? "Vocabulary" : "ಶಬ್ದಕೋಶ", value: avgRubric.vocabulary },
-                        { label: lang === "en" ? "Handwriting clarity" : "ಕೈಬರಹದ ಸ್ಪಷ್ಟತೆ", value: avgRubric.ocr },
+                        { label: lang === "en" ? "Text recognition confidence" : "ಪಠ್ಯ ಗುರುತಿಸುವಿಕೆ ವಿಶ್ವಾಸ", value: avgRubric.ocr },
                       ]
                         .filter((r) => r.value != null)
                         .map((r) => (

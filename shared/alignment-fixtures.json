@@ -1,0 +1,185 @@
+{
+  "_comment": "Shared by client/__tests__/alignment-parity.test.ts and backend/tests/test_analysis.py. Both implementations must produce exactly these results.",
+  "cases": [
+    {
+      "name": "README fixture: one substitution",
+      "reference": "The boy went to school.",
+      "transcript": "The boy go to school",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "correct",
+        "substitution",
+        "correct",
+        "correct"
+      ],
+      "accuracy": 80,
+      "wpm": 5
+    },
+    {
+      "name": "omission",
+      "reference": "a b c d",
+      "transcript": "a c d",
+      "durationMs": 30000,
+      "statuses": [
+        "correct",
+        "omission",
+        "correct",
+        "correct"
+      ],
+      "accuracy": 75,
+      "wpm": 6
+    },
+    {
+      "name": "insertion",
+      "reference": "a b c",
+      "transcript": "a x b c",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "insertion",
+        "correct",
+        "correct"
+      ],
+      "accuracy": 100,
+      "wpm": 4
+    },
+    {
+      "name": "empty transcript",
+      "reference": "one two",
+      "transcript": "",
+      "durationMs": 10000,
+      "statuses": [
+        "omission",
+        "omission"
+      ],
+      "accuracy": 0,
+      "wpm": 0
+    },
+    {
+      "name": "stops partway; repeated word matched early",
+      "reference": "a thirsty crow flew far and the clever crow drank",
+      "transcript": "a thirsty crow",
+      "durationMs": 6000,
+      "statuses": [
+        "correct",
+        "correct",
+        "correct",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission"
+      ],
+      "accuracy": 30,
+      "wpm": 30
+    },
+    {
+      "name": "misread final word is a substitution",
+      "reference": "a b c",
+      "transcript": "a x",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "substitution",
+        "omission"
+      ],
+      "accuracy": 33.3,
+      "wpm": 2
+    },
+    {
+      "name": "Kannada omission with punctuation",
+      "reference": "\u0ca8\u0ca8\u0ccd\u0ca8 \u0cb6\u0cbe\u0cb2\u0cc6 \u0ca4\u0cc1\u0c82\u0cac\u0cbe \u0cb8\u0cc1\u0c82\u0ca6\u0cb0\u0cb5\u0cbe\u0c97\u0cbf\u0ca6\u0cc6.",
+      "transcript": "\u0ca8\u0ca8\u0ccd\u0ca8 \u0cb6\u0cbe\u0cb2\u0cc6 \u0cb8\u0cc1\u0c82\u0ca6\u0cb0\u0cb5\u0cbe\u0c97\u0cbf\u0ca6\u0cc6",
+      "durationMs": 9000,
+      "statuses": [
+        "correct",
+        "correct",
+        "omission",
+        "correct"
+      ],
+      "accuracy": 75,
+      "wpm": 20
+    },
+    {
+      "name": "Kannada ZWNJ/ZWJ are ignored",
+      "reference": "\u0cb6\u0cbe\u0cb2\u0cc6\u200c \u0cae\u0ca8\u0cc6\u200d",
+      "transcript": "\u0cb6\u0cbe\u0cb2\u0cc6 \u0cae\u0ca8\u0cc6",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "correct"
+      ],
+      "accuracy": 100,
+      "wpm": 2
+    },
+    {
+      "name": "Kannada decomposed vowel sign (NFD) matches composed (NFC)",
+      "reference": "\u0c95\u0cca\u0ca1\u0cc1 \u0cae\u0ca8\u0cc6",
+      "transcript": "\u0c95\u0cc6\u0cc2\u0ca1\u0cc1 \u0cae\u0ca8\u0cc6",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "correct"
+      ],
+      "accuracy": 100,
+      "wpm": 2
+    },
+    {
+      "name": "case, apostrophes and punctuation ignored",
+      "reference": "Don't stop, Ravi!",
+      "transcript": "dont stop ravi",
+      "durationMs": 3000,
+      "statuses": [
+        "correct",
+        "correct",
+        "correct"
+      ],
+      "accuracy": 100,
+      "wpm": 60
+    },
+    {
+      "name": "mixed errors",
+      "reference": "a b c d",
+      "transcript": "a x c d e",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "substitution",
+        "correct",
+        "correct",
+        "insertion"
+      ],
+      "accuracy": 75,
+      "wpm": 5
+    },
+    {
+      "name": "half rounds up like JavaScript",
+      "reference": "w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15",
+      "transcript": "w0",
+      "durationMs": 60000,
+      "statuses": [
+        "correct",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission",
+        "omission"
+      ],
+      "accuracy": 6.3,
+      "wpm": 1
+    }
+  ]
+}

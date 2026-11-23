@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "VGyan",
+    "slug": "vgyan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "client",
+    "scheme": "vgyan",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
@@ -19,11 +19,18 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "package": "com.vgyan.app"
+      "package": "com.vgyan.app",
+      "versionCode": 1,
+      "blockedPermissions": [
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "allowBackup": false
     },
     "web": {
       "output": "static",
@@ -49,12 +56,22 @@
         "expo-image-picker",
         {
           "cameraPermission": "VGyan uses the camera to capture your handwritten answers.",
-          "photosPermission": "VGyan lets you upload a photo of your handwritten answer.",
-          "microphonePermission": false
+          "photosPermission": "VGyan lets you upload a photo of your handwritten answer."
         }
       ],
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false,
+            "enableMinifyInReleaseBuilds": false
+          }
+        }
+      ],
+      "expo-background-task",
+      "./plugins/with-android-release"
     ],
     "experiments": {
       "typedRoutes": true,

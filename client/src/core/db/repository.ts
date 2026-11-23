@@ -302,6 +302,13 @@ export function createRepository(): Repository {
       );
     },
 
+    async listMediaUris() {
+      const rows = await d().getAllAsync<{ uri: string }>(
+        `SELECT audio_path AS uri FROM reading_attempts WHERE audio_path IS NOT NULL
+         UNION SELECT image_path AS uri FROM writing_attempts WHERE image_path IS NOT NULL`
+      );
+      return rows.map((r) => r.uri);
+    },
     async deleteParticipantData(participantId) {
       await d().withTransactionAsync(async () => {
         await d().runAsync("DELETE FROM reading_attempts WHERE participant_id = ?", participantId);

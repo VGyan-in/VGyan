@@ -19,8 +19,8 @@ coverage/
 *.p12
 *.key
 *.mobileprovision
-android/
-ios/
+/client/android/
+/client/ios/
 
 # Environment
 .env
@@ -43,3 +43,13 @@ Thumbs.db
 
 # Client reference project (not part of VGyan, do not commit)
 StudentSkillManager-main/
+
+# Python
+.venv*/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+backend/var/
+
+# Gradle cache created when the speech module is opened in Android Studio
+client/modules/vgyan-speech/android/.gradle/

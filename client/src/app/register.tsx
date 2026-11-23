@@ -14,6 +14,7 @@ export default function RegisterScreen() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [participantId, setParticipantId] = useState("");
+  const [classCode, setClassCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [touched, setTouched] = useState(false);
@@ -44,7 +45,7 @@ export default function RegisterScreen() {
     if (!valid || busy) return;
     setBusy(true);
     setError(null);
-    const res = await register({ fullName, email, participantId, password });
+    const res = await register({ fullName, email, participantId, password, classCode: classCode.trim().toUpperCase() });
     setBusy(false);
     if (res.ok) {
       router.replace("/");
@@ -59,6 +60,10 @@ export default function RegisterScreen() {
         ? en
           ? "An account with this email already exists on this phone. Sign in instead."
           : "ಈ ಇಮೇಲ್‌ನ ಖಾತೆ ಈಗಾಗಲೇ ಇದೆ. ಸೈನ್ ಇನ್ ಮಾಡಿ."
+        : res.error === "invalid-class-code"
+        ? en
+          ? "That class code was not found. Check it with your teacher, or leave it empty."
+          : "ಈ ತರಗತಿ ಕೋಡ್ ಸಿಗಲಿಲ್ಲ. ಶಿಕ್ಷಕರೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಖಾಲಿ ಬಿಡಿ."
         : res.error === "network"
         ? en
           ? "Creating an account needs an internet connection. Connect and try again."
@@ -124,6 +129,16 @@ export default function RegisterScreen() {
           autoCorrect={false}
           hint={en ? "Leave empty and we'll create one for you." : "ಖಾಲಿ ಬಿಟ್ಟರೆ ನಾವು ಒಂದನ್ನು ರಚಿಸುತ್ತೇವೆ."}
           error={show(errors.participantId)}
+        />
+        <Field
+          label={en ? "Class code" : "ತರಗತಿ ಕೋಡ್"}
+          optionalLabel={en ? "From your teacher" : "ಶಿಕ್ಷಕರಿಂದ"}
+          placeholder="ABC234"
+          value={classCode}
+          onChangeText={setClassCode}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          hint={en ? "Lets your teacher see your progress. You can add it later in your profile." : "ನಿಮ್ಮ ಶಿಕ್ಷಕರು ನಿಮ್ಮ ಪ್ರಗತಿಯನ್ನು ನೋಡಲು. ನಂತರ ಪ್ರೊಫೈಲ್‌ನಲ್ಲಿ ಸೇರಿಸಬಹುದು."}
         />
         <Field
           label={en ? "Email" : "ಇಮೇಲ್"}

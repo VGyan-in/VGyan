@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { getWritingPrompt } from "@/constants/content";
 import { newId } from "@/core/auth/credentials";
-import { requestWritingAssessment } from "@/features/feedback/ai";
 import { computeWritingMetrics } from "@/features/writing/metrics";
 import { useApp, WritingDraft } from "@/state/app-store";
 
@@ -11,7 +10,7 @@ import { useApp, WritingDraft } from "@/state/app-store";
  * Resolves to the new attempt id.
  */
 export function useSubmitWriting() {
-  const { saveNewWriting, updateWritingAttempt } = useApp();
+  const { saveNewWriting, requestWritingAssessmentFor } = useApp();
 
   return useCallback(
     async (draft: WritingDraft): Promise<string | null> => {
@@ -30,6 +29,8 @@ export function useSubmitWriting() {
         imageUri: draft.imageUri,
         originalOcr: draft.originalOcr,
         ocrConfidence: draft.ocrConfidence,
+        ocrId: draft.ocrId ?? null,
+        ocrEngineVersion: draft.ocrEngineVersion ?? null,
         correctedText: text,
         wordCount: metrics.wordCount,
         sentenceCount: metrics.sentenceCount,
@@ -40,21 +41,11 @@ export function useSubmitWriting() {
         aiStatus: "pending",
       });
 
-      requestWritingAssessment(text, metrics, prompt.language, prompt.minWords)
-        .then((assessment) =>
-          updateWritingAttempt(attempt.id, {
-            assessment,
-            aiStatus: "completed",
-            score: assessment.score,
-            grammarScore: assessment.grammarScore,
-            vocabularyScore: assessment.vocabularyScore,
-            spellingScore: assessment.spellingScore,
-          })
-        )
-        .catch(() => updateWritingAttempt(attempt.id, { aiStatus: "failed" }));
+      // Fire and forget: offline it stays pending and is retried on the next sync.
+      void requestWritingAssessmentFor(attempt.id);
 
       return attempt.id;
     },
-    [saveNewWriting, updateWritingAttempt]
+    [saveNewWriting, requestWritingAssessmentFor]
   );
 }

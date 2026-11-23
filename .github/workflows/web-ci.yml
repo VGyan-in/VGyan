@@ -7,6 +7,7 @@ on:
       - develop
       - 'feat/**'
       - 'fix/**'
+      - 'audit/**'
     paths:
       - 'web/**'
       - '.github/workflows/web-ci.yml'
@@ -32,12 +33,12 @@ jobs:
         working-directory: web
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
@@ -46,6 +47,9 @@ jobs:
 
       - name: Run Oxlint
         run: npm run lint
+
+      - name: Tests
+        run: npm test
 
       - name: Typecheck & build
         run: npm run build

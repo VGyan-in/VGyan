@@ -1,80 +1,70 @@
+import { File } from "expo-file-system";
 import type { AssessmentLanguage } from "@/constants/content";
-import { tokenize } from "./analyzer";
+import { VgyanSpeech, type RecognitionResult } from "../../../modules/vgyan-speech";
+import { ensureModelLoaded, getModelState } from "./models";
 import type { AsrWord } from "./fluency";
-
-export interface AsrRequest {
-  audioUri: string | null;
-  language: AssessmentLanguage;
-  referenceText: string;
-  durationMs: number;
-}
 
 export interface AsrResult {
   transcript: string;
-  confidence: number;
+  /** Mean Vosk word confidence (0..1); null when no words were recognised. */
+  confidence: number | null;
   modelVersion: string;
-  /** Per-word timings from Vosk; enables pause/repetition metrics. The stub has none. */
-  words?: AsrWord[];
+  words: AsrWord[];
+  /** Recognition time after the recording stopped (or for the whole file). */
+  asrMs: number | null;
+}
+
+export class AsrUnavailableError extends Error {
+  constructor(readonly reason: "unsupported" | "no-model") {
+    super(reason === "unsupported" ? "Speech engine not available in this build" : "Speech model not installed");
+  }
+}
+
+/** Converts the native result; `null` text means recognition did not run during recording. */
+export function fromNative(r: RecognitionResult, modelVersion: string): AsrResult | null {
+  if (r.text == null) return null;
+  return {
+    transcript: r.text.trim(),
+    confidence: r.confidence ?? null,
+    modelVersion,
+    words: (r.words ?? []).map((w) => ({ word: w.word, start: w.start, end: w.end, conf: w.conf })),
+    asrMs: r.asrMs ?? null,
+  };
 }
 
 /**
- * Speech recognition entry point.
- *
- * STUB: on-device Vosk (react-native-vosk + TDNN models) needs a development
- * build and the model files, so this simulates a transcript from the reference
- * text with a few realistic reading errors. Swap the body for the Vosk call;
- * the screens only depend on this signature.
+ * Offline recognition of a saved 16 kHz WAV with the installed Vosk model. Used when the model was
+ * not ready during recording, and to transcribe "pending" recordings after a model is installed.
+ * Never falls back to anything online and never invents a transcript.
  */
-export async function transcribe(req: AsrRequest): Promise<AsrResult> {
-  await new Promise((r) => setTimeout(r, 1400));
-
-  const words = tokenize(req.referenceText);
-  const rand = seededRandom(hash(`${req.audioUri ?? ""}:${req.durationMs}`));
-  // Simulate a realistic reading rate, so a short recording covers only part of the passage.
-  const wordsPerMinute = (req.language === "Kannada" ? 55 : 80) * (0.85 + rand() * 0.3);
-  const lastIndex = Math.min(words.length, Math.round((req.durationMs / 60000) * wordsPerMinute));
-
-  const spoken: string[] = [];
-  for (let i = 0; i < lastIndex; i++) {
-    const w = words[i];
-    const roll = rand();
-    if (roll < 0.04) continue; // omission
-    if (roll < 0.09) {
-      spoken.push(mutate(w));
-      continue;
-    }
-    spoken.push(w);
-    if (roll > 0.985) spoken.push(req.language === "Kannada" ? "ಅದು" : "the"); // insertion
-  }
-
-  return {
-    transcript: spoken.join(" "),
-    confidence: Math.round((0.82 + rand() * 0.14) * 100) / 100,
-    modelVersion: `mock-vosk-${req.language === "Kannada" ? "kn" : "en"}-0.1`,
-  };
+export async function transcribeFile(audioUri: string, language: AssessmentLanguage): Promise<AsrResult> {
+  if (!VgyanSpeech) throw new AsrUnavailableError("unsupported");
+  if (!audioUri.toLowerCase().endsWith(".wav")) throw new Error("Only WAV recordings can be transcribed offline");
+  if (!new File(audioUri).exists) throw new Error("Recording file is missing on this phone");
+  const spec = await ensureModelLoaded(language);
+  if (!spec) throw new AsrUnavailableError(getModelState(language).status === "unsupported" ? "unsupported" : "no-model");
+  const res = fromNative(await VgyanSpeech.transcribeFile(audioUri, spec.key), spec.version);
+  if (!res) throw new Error("Recognition returned no result");
+  return res;
 }
 
-function mutate(word: string): string {
-  const clean = word.replace(/[^\p{L}\p{M}\p{N}]/gu, "");
-  if (clean.length <= 2) return clean + clean.slice(-1);
-  const chars = Array.from(clean);
-  chars.splice(Math.floor(chars.length / 2), 1);
-  return chars.join("");
+// ---- hand-off from the recording screen to the processing screen (too large for route params) ----
+
+export interface RecordingHandoff {
+  audioUri: string;
+  durationMs: number;
+  asr: AsrResult | null;
 }
 
-function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
+const handoffs = new Map<string, RecordingHandoff>();
+
+export function putHandoff(id: string, h: RecordingHandoff) {
+  handoffs.set(id, h);
 }
 
-function seededRandom(seed: number) {
-  let s = seed || 1;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
+export function takeHandoff(id: string | undefined): RecordingHandoff | null {
+  if (!id) return null;
+  const h = handoffs.get(id) ?? null;
+  handoffs.delete(id);
+  return h;
 }

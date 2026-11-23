@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { MessageSquare, Send, User, Clock } from 'lucide-react';
-import { TeacherComment, Student } from '../types';
+import type { CommentCategory, TeacherComment, Student } from '../types';
+import { formatDateTime } from '../utils/format';
 
 interface TeacherNotesViewProps {
   comments: TeacherComment[];
   students: Student[];
-  onAddComment: (studentId: string, studentName: string, text: string, category?: any) => void;
+  onAddComment: (studentId: string, text: string, category: CommentCategory) => void;
 }
 
 export const TeacherNotesView: React.FC<TeacherNotesViewProps> = ({
@@ -23,7 +24,7 @@ export const TeacherNotesView: React.FC<TeacherNotesViewProps> = ({
     if (!text.trim()) return;
     const student = students.find((s) => s.studentId === selectedStudentId);
     if (!student) return;
-    onAddComment(student.studentId, student.name, text, category);
+    onAddComment(student.studentId, text, category);
     setText('');
   };
 
@@ -144,7 +145,7 @@ export const TeacherNotesView: React.FC<TeacherNotesViewProps> = ({
                 <span>By: <strong>{cmt.author}</strong></span>
                 <div style={styles.timestamp}>
                   <Clock size={12} />
-                  <span>{cmt.timestamp}</span>
+                  <span>{formatDateTime(cmt.timestamp)}</span>
                 </div>
               </div>
             </div>

@@ -1,9 +1,11 @@
 import { ErrorBoundaryProps, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppProvider, useApp } from "@/state/app-store";
+// Defines the headless sync task at bundle load, as TaskManager requires.
+import { registerBackgroundSync } from "@/core/sync/background";
 
 const CREAM = "#FAF6EF";
 
@@ -24,6 +26,10 @@ export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
 
 function AppStack() {
   const { ready } = useApp();
+
+  useEffect(() => {
+    if (ready) void registerBackgroundSync();
+  }, [ready]);
 
   // Hold rendering until the database is open and the session is restored,
   // so route guards never act on half-loaded state.
